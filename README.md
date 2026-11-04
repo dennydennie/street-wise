@@ -93,11 +93,13 @@ railway up --service api --detach      # from the repo root (project linked via 
 ```
 
 Current environment: **staging** — `https://api-production-683d8.up.railway.app` (`/health`, `/docs`).
-It runs with `SMS_PROVIDER=console` (sign-in codes appear in the Railway logs only) and the fake
-Paynow gateway (`FAKE_PAYNOW_AUTO_SETTLE_SECONDS=6`, no real money). `OTP_DEV_ECHO` is deliberately
-off on the public URL. Moving to `NODE_ENV=production` needs Gikko (SMS) and SendGrid (e-mail)
-credentials — the same providers as BluWorx (`SMS_PROVIDER=gikko`, `EMAIL_PROVIDER=sendgrid`), Paynow live
-credentials, and a real passkey domain (`WEBAUTHN_RP_ID`, `WEBAUTHN_ORIGINS`) — the env schema refuses
-to start otherwise.
+It sends real SMS through **Gikko** and e-mail through **SendGrid** — the same provider accounts as
+BluWorx (keys copied from the `bluworx` Railway project). SMS currently go out with BluWorx's
+registered sender ID (`GIKKO_SENDER_NAME=BluWorx`) until a "StreetWise" sender is registered with
+Gikko; e-mail is sent from `info@arcpay.cloud` (SendGrid-verified), and support/moderation mail goes
+there too. Payments still use the fake Paynow gateway (`FAKE_PAYNOW_AUTO_SETTLE_SECONDS=6`, no real
+money) and `OTP_DEV_ECHO` is off. Moving to `NODE_ENV=production` additionally needs Paynow live
+credentials and a real passkey domain (`WEBAUTHN_RP_ID`, `WEBAUTHN_ORIGINS`) — the env schema
+refuses to start otherwise.
 
 Point the app at it with `--dart-define=API_BASE_URL=https://api-production-683d8.up.railway.app`.
