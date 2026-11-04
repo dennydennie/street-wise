@@ -11,6 +11,9 @@ export const DEMO_AREAS = {
   sekeCripps: { id: 'de300000-0000-4000-8000-000000000001', name: 'Seke Rd × Cripps Rd', lat: -17.8447, lng: 31.0342 },
   rottenRow: { id: 'de300000-0000-4000-8000-000000000002', name: 'Rotten Row', lat: -17.8355, lng: 31.04 },
   mbareRd: { id: 'de300000-0000-4000-8000-000000000003', name: 'Mbare Rd', lat: -17.853, lng: 31.038 },
+  // ~550 m from Seke × Cripps (well outside the 200 m area radius), so the live
+  // robot outage doesn't make the crime area alert during the day.
+  crippsMazorodze: { id: 'de300000-0000-4000-8000-000000000004', name: 'Cripps Rd × Simon Mazorodze Rd', lat: -17.8485, lng: 31.031 },
 } as const;
 /** The seeded camera area at Samora Machel × Julius Nyerere (camera 1). */
 export const SAMORA_JULIUS = { id: 'a7ea0000-0000-4000-8000-000000000001', lat: -17.8268, lng: 31.0479 } as const;
@@ -93,21 +96,24 @@ export const buildDemoHistory = (now: Date): DemoReport[] => {
       stillThereCount: i % 3 === 0 ? 2 : 0,
     });
   });
-  // …and its robot is out right now (plus two older outages).
-  historic('robot_out', seke, harareTime(now, 21, 6, 40), { summary: 'Robot not working', severity: 3 });
-  historic('robot_out', seke, harareTime(now, 47, 17, 15), { summary: 'Traffic lights off', severity: 3 });
+  // Cripps × Simon Mazorodze: its robot is out right now (plus two older outages).
+  // Kept in its own area so Seke × Cripps is quiet by day and only its night-time
+  // crime pattern decides whether it alerts.
+  const cripps = DEMO_AREAS.crippsMazorodze;
+  historic('robot_out', cripps, harareTime(now, 21, 6, 40), { summary: 'Robot not working', severity: 3 });
+  historic('robot_out', cripps, harareTime(now, 47, 17, 15), { summary: 'Traffic lights off', severity: 3 });
   const robotNow = new Date(now.getTime() - 30 * 60_000);
   out.push({
     type: 'robot_out',
-    ...jitter(seke),
-    areaId: seke.id,
-    locationName: seke.name,
+    ...jitter(cripps),
+    areaId: cripps.id,
+    locationName: cripps.name,
     capturedAt: robotNow,
     status: 'live',
     expiresAt: new Date(robotNow.getTime() + REPORT_LIFETIME_HOURS.robot_out * HOUR_MS),
     stillThereCount: 1,
     goneCount: 0,
-    summary: 'Robot not working at Seke and Cripps',
+    summary: 'Robot not working at Cripps and Simon Mazorodze',
     severity: 3,
     tags: [],
   });
