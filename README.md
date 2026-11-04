@@ -81,3 +81,22 @@ through that handler (wallets ending `0000` fail with "Insufficient balance").
 | `OPENAI_API_KEY`, `OPENAI_TRANSCRIBE_MODEL` | –, `gpt-4o-mini-transcribe` | |
 | `OTP_DEV_ECHO` | `false` | Dev only: OTP request returns `devCode`. Refused in production. |
 | `FAKE_PAYNOW_AUTO_SETTLE_SECONDS` | `0` | Dev only, `PAYNOW_MODE=fake` only. Refused in production. |
+
+## Deploy (Railway)
+
+The API deploys to Railway project **street-wise** (service `api`, plus a `Postgres` database) from the
+repo root using `Dockerfile` + `railway.json`. On every boot `docker-entrypoint.sh` runs migrations,
+upserts the camera list, and — when `SEED_DEMO=true` — refreshes the 90-day demo history.
+
+```bash
+railway up --service api --detach      # from the repo root (project linked via `railway link`)
+```
+
+Current environment: **staging** — `https://api-production-683d8.up.railway.app` (`/health`, `/docs`).
+It runs with `SMS_PROVIDER=console` (sign-in codes appear in the Railway logs only) and the fake
+Paynow gateway (`FAKE_PAYNOW_AUTO_SETTLE_SECONDS=6`, no real money). `OTP_DEV_ECHO` is deliberately
+off on the public URL. Moving to `NODE_ENV=production` needs a real SMS provider, Paynow live
+credentials, and a real passkey domain (`WEBAUTHN_RP_ID`, `WEBAUTHN_ORIGINS`) — the env schema refuses
+to start otherwise.
+
+Point the app at it with `--dart-define=API_BASE_URL=https://api-production-683d8.up.railway.app`.
