@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: streetwise-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: streetwise
+      POSTGRES_USER: streetwise
+      POSTGRES_PASSWORD: streetwise
+    ports:
+      # 5432/5433 are left free for other local stacks (trusted-hands uses 5433, evend-local uses 5434).
+      - "5436:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U streetwise -d streetwise"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7
+    container_name: streetwise-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -1,0 +1,28 @@
+{
+  "name": "@streetwise/shared",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prepare": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "tsc -p tsconfig.build.json && node --test test/contracts.test.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "eslint": "9.39.5",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.64.0"
+  }
+}

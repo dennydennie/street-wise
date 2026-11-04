@@ -1,0 +1,48 @@
+node_modules
+.pnpm-store
+.turbo
+dist
+build
+coverage
+output
+artifacts/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# Flutter / Dart (apps/mobile)
+.dart_tool
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+**/.gradle
+**/android/.gradle
+**/android/app/debug
+**/android/app/profile
+**/android/app/release
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/ephemeral
+**/ios/Pods
+**/ios/.symlinks
+apps/mobile/build
+apps/mobile/.flutter-plugins
+apps/mobile/.flutter-plugins-dependencies
+# Generated Dart sources (keep hand-written *.dart tracked)
+*.g.dart
+*.freezed.dart
+apps/mobile/android/key.properties
+apps/mobile/android/local.properties
+*.jks
+*.keystore
+*.bak
+*~
+
+# IDE / OS
+.DS_Store
+.idea
+.vscode

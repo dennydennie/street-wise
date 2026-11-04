@@ -1,0 +1,32 @@
+{
+  "name": "streetwise-zw",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.7.0",
+  "engines": {
+    "node": "22.18.0",
+    "pnpm": "10.7.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean",
+    "start": "node apps/api/dist/main.js",
+    "start:prod": "node apps/api/dist/main.js",
+    "db:migrate": "pnpm -F @streetwise/api migration:run",
+    "db:seed": "pnpm -F @streetwise/api seed:cameras",
+    "mobile:get": "cd apps/mobile && flutter pub get",
+    "mobile:web": "cd apps/mobile && flutter run -d chrome",
+    "mobile:android": "cd apps/mobile && flutter run -d android",
+    "mobile:test": "cd apps/mobile && flutter test",
+    "mobile:analyze": "cd apps/mobile && flutter analyze",
+    "mobile:build:web": "cd apps/mobile && flutter build web",
+    "mobile:build:apk": "cd apps/mobile && flutter build apk --debug"
+  },
+  "devDependencies": {
+    "turbo": "2.10.5"
+  }
+}
