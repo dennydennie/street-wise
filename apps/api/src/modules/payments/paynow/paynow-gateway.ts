@@ -23,6 +23,8 @@ export type PaynowResult = {
   paynowReference: string | null;
   amountCents: number;
   status: PaynowResultStatus;
+  /** Paynow's error text, when it sends one with a failed status. */
+  error: string | null;
 };
 
 export interface PaynowGateway {

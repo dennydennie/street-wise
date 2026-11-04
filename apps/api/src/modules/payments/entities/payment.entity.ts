@@ -52,6 +52,10 @@ export class Payment {
   @Column({ type: 'text', nullable: true })
   instructions: string | null;
 
+  /** Why the payment failed or was cancelled, shown to the payer. */
+  @Column({ type: 'varchar', length: 160, nullable: true })
+  failureReason: string | null;
+
   @Column({ type: 'timestamptz', nullable: true })
   paidAt: Date | null;
 

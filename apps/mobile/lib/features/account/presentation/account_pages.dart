@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:streetwise_zw/app/shell.dart';
+import 'package:streetwise_zw/core/api/api_client.dart';
+import 'package:streetwise_zw/core/services/passkey_service.dart';
 import 'package:streetwise_zw/core/theme/tokens.dart';
 import 'package:streetwise_zw/core/widgets/widgets.dart';
 import 'package:streetwise_zw/data/app_state.dart';
@@ -114,8 +118,34 @@ class AlertsVoiceScreen extends StatelessWidget {
 
 // ───────────────────────────── 14 Sign-in & passkeys ─────────────────────────────
 
-class SignInPasskeysScreen extends StatelessWidget {
+class SignInPasskeysScreen extends StatefulWidget {
   const SignInPasskeysScreen({super.key});
+  @override
+  State<SignInPasskeysScreen> createState() => _SignInPasskeysScreenState();
+}
+
+class _SignInPasskeysScreenState extends State<SignInPasskeysScreen> {
+  bool adding = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final app = App.read(context);
+    app.refreshSessions();
+    app.refreshAccount();
+  }
+
+  Future<void> _add() async {
+    setState(() => adding = true);
+    try {
+      await App.read(context).createPasskey();
+      if (mounted) toast(context, 'Passkey added');
+    } catch (e) {
+      if (mounted && !isPasskeyCancel(e)) toast(context, e is ApiException ? e.friendly : 'This device couldn\'t create a passkey.');
+    } finally {
+      if (mounted) setState(() => adding = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -125,45 +155,61 @@ class SignInPasskeysScreen extends StatelessWidget {
       bottom: const PushedNav(),
       body: ListView(padding: const EdgeInsets.fromLTRB(20, 4, 20, 20), children: [
         const Kicker('Passkeys'),
+        if (app.passkeys.isEmpty) Text('No passkeys yet. You sign in with SMS codes.', style: T.body(12.5, color: C.n700)),
         for (final pk in app.passkeys)
           RowTile(
             icon: I.keyRound,
-            title: pk.provider,
-            subtitle: pk.detail,
-            trailing: pk.thisPhone
-                ? const Tag('This phone')
-                : IconButton(
-                    tooltip: 'Remove passkey',
-                    icon: const Icon(I.trash2, size: 17, color: C.n700),
-                    onPressed: () async {
-                      // Can't remove the last sign-in method: the verified phone is the fallback.
-                      final ok = await _confirm(context, 'Remove passkey?',
-                          '${pk.provider} will no longer sign you in. You can still use SMS codes to ${app.phoneMasked}.');
-                      if (ok) {
-                        app.passkeys.remove(pk);
-                        app.touch();
-                      }
-                    },
-                  ),
+            title: pk.label ?? 'Passkey',
+            subtitle: 'Created ${pk.createdAt == null ? '—' : dayMonth(pk.createdAt!)}'
+                '${pk.lastUsedAt == null ? ' · not used yet' : ' · used ${ago(pk.lastUsedAt)}'}',
+            trailing: IconButton(
+              tooltip: 'Remove passkey',
+              icon: const Icon(I.trash2, size: 17, color: C.n700),
+              onPressed: () async {
+                final ok = await _confirm(context, 'Remove passkey?',
+                    '${pk.label ?? 'This passkey'} will no longer sign you in. You can still use SMS codes to ${app.phoneMasked}.');
+                if (!ok || !context.mounted) return;
+                try {
+                  await app.deletePasskey(pk);
+                } on ApiException catch (e) {
+                  if (context.mounted) toast(context, e.friendly);
+                }
+              },
+            ),
           ),
         const SizedBox(height: 12),
-        Btn.secondary('Add a passkey', icon: I.plus, onTap: () => showPasskeySheet(context, create: true)),
+        Btn.secondary(adding ? 'Waiting for your device…' : 'Add a passkey', icon: I.plus, onTap: adding ? null : _add),
         const Kicker('Phone number'),
         RowTile(
           icon: I.smartphone,
-          title: app.phone,
-          subtitle: 'Verified',
+          title: app.phone.isEmpty ? 'No phone number' : prettyPhone(app.phone),
+          subtitle: app.phone.isEmpty ? null : 'Verified',
+          chevron: false,
           trailing: GestureDetector(
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PhoneEntryScreen(changeOnly: true))),
+            onTap: () => toast(context, 'To change your number, contact support@streetwise.co.zw from Help.'),
             child: Text('Change',
                 style: T.body(13, color: C.a700, weight: FontWeight.w500)
                     .copyWith(decoration: TextDecoration.underline, decorationColor: C.a700)),
           ),
         ),
         const Kicker('Sessions'),
-        RowTile(title: 'This phone · Tecno Spark 20', subtitle: 'Active now', chevron: false),
+        if (app.sessions.isEmpty) Text('Loading sessions…', style: T.body(12.5, color: C.n700)),
+        for (final s in app.sessions)
+          RowTile(
+            title: s.current ? 'This device · ${s.deviceLabel ?? 'Unknown'}' : (s.deviceLabel ?? 'Unknown device'),
+            subtitle: s.current ? 'Active now' : 'Last seen ${ago(s.lastSeenAt)}',
+            chevron: false,
+          ),
         const SizedBox(height: 6),
-        Btn.ghost('Sign out of all other devices', onTap: () => toast(context, 'Signed out of all other devices')),
+        if (app.sessions.where((s) => !s.current).isNotEmpty)
+          Btn.ghost('Sign out of all other devices', onTap: () async {
+            try {
+              await app.signOutOtherDevices();
+              if (context.mounted) toast(context, 'Signed out of all other devices');
+            } on ApiException catch (e) {
+              if (context.mounted) toast(context, e.friendly);
+            }
+          }),
       ]),
     );
   }
@@ -185,12 +231,9 @@ class PrivacyDataScreen extends StatelessWidget {
         RowTile(
           icon: I.mapPin,
           title: 'Location',
-          subtitle: app.locationAlways ? 'Always · drive mode only' : 'Not allowed',
-          trailing: Tag(app.locationAlways ? 'On' : 'Off', neutral: !app.locationAlways),
-          onTap: () {
-            app.locationAlways = !app.locationAlways;
-            app.touch();
-          },
+          subtitle: app.here.real ? 'Allowed · drive mode only' : 'Not allowed — tap to allow',
+          trailing: Tag(app.here.real ? 'On' : 'Off', neutral: !app.here.real),
+          onTap: () => app.locate(request: true),
         ),
         RowTile(
           icon: I.smartphone,
@@ -207,7 +250,7 @@ class PrivacyDataScreen extends StatelessWidget {
           decoration: BoxDecoration(border: Border.all(color: C.divider)),
           child: IntrinsicHeight(
             child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              _keepCell('On our servers', 'Hashed phone, name, your reports & votes'),
+              _keepCell('On our servers', 'Phone, name, your reports & votes'),
               const VerticalDivider(width: 1, color: C.divider),
               _keepCell('Only on this phone', 'Trips, GPS history, cached map'),
             ]),
@@ -227,22 +270,29 @@ class PrivacyDataScreen extends StatelessWidget {
                 app.touch();
               }),
         ),
-        RowTile(
-          icon: I.download,
-          title: 'Download my data',
-          onTap: () => toast(context, 'Preparing export · we\'ll send a link to ${app.phoneMasked}'),
-        ),
-        RowTile(
-          icon: I.trash2,
-          title: 'Erase my reports only',
-          onTap: () async {
-            if (await _confirm(context, 'Erase all your reports?',
-                'Your ${app.postedCount} reports, photos and votes are deleted. Your account stays.')) {
-              app.eraseMyReports();
-              if (context.mounted) toast(context, 'Your reports are erased');
-            }
-          },
-        ),
+        if (app.signedIn) ...[
+          RowTile(
+            icon: I.download,
+            title: 'Download my data',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _ExportScreen())),
+          ),
+          RowTile(
+            icon: I.trash2,
+            title: 'Erase my reports only',
+            onTap: () async {
+              if (!await _confirm(context, 'Erase all your reports?',
+                  'Your ${app.myReports.length} reports and their votes are deleted. Your account stays.')) {
+                return;
+              }
+              try {
+                final n = await app.eraseMyReports();
+                if (context.mounted) toast(context, '$n report${n == 1 ? '' : 's'} erased');
+              } on ApiException catch (e) {
+                if (context.mounted) toast(context, e.friendly);
+              }
+            },
+          ),
+        ],
         RowTile(
           icon: I.fileText,
           title: 'Privacy policy',
@@ -266,6 +316,53 @@ class PrivacyDataScreen extends StatelessWidget {
       );
 }
 
+/// Shows the JSON export from GET /me/export with a copy button.
+class _ExportScreen extends StatefulWidget {
+  const _ExportScreen();
+  @override
+  State<_ExportScreen> createState() => _ExportScreenState();
+}
+
+class _ExportScreenState extends State<_ExportScreen> {
+  String? json;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    App.read(context).api.exportMe().then((v) {
+      if (mounted) setState(() => json = const JsonEncoder.withIndent('  ').convert(v));
+    }).catchError((Object e) {
+      if (mounted) setState(() => error = e is ApiException ? e.friendly : '$e');
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SwPage(
+      title: 'My data',
+      body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(
+          child: json == null
+              ? Center(child: Text(error ?? 'Preparing your export…', style: T.body(13, color: C.n700)))
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: SelectableText(json!, style: const TextStyle(fontFamily: 'monospace', fontSize: 11.5)),
+                ),
+        ),
+        if (json != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: Btn('Copy all', icon: I.download, onTap: () {
+              Clipboard.setData(ClipboardData(text: json!));
+              toast(context, 'Copied ${(json!.length / 1024).toStringAsFixed(1)} KB');
+            }),
+          ),
+      ]),
+    );
+  }
+}
+
 // ───────────────────────────── Blocked reporters ─────────────────────────────
 
 class BlockedScreen extends StatelessWidget {
@@ -276,20 +373,25 @@ class BlockedScreen extends StatelessWidget {
     return SwPage(
       title: 'Blocked reporters',
       bottom: const PushedNav(),
-      body: app.blocked.isEmpty
+      body: app.blocks.isEmpty
           ? Center(child: Text('Nobody blocked.', style: T.body(13, color: C.n700)))
           : ListView(padding: const EdgeInsets.fromLTRB(20, 8, 20, 20), children: [
-              Text('Their reports are hidden from your map and alerts. They are not told.', style: T.body(12.5, color: C.n700)),
+              Text('Their reports are hidden from your map and alerts. Reporters stay anonymous and are not told.',
+                  style: T.body(12.5, color: C.n700)),
               const SizedBox(height: 8),
-              for (final b in app.blocked.toList())
+              for (final b in app.blocks.toList())
                 RowTile(
                   icon: I.ban,
-                  title: b,
+                  title: 'Reporter blocked',
+                  subtitle: b.createdAt == null ? null : 'Since ${dayMonth(b.createdAt!)}',
                   chevron: false,
                   trailing: TextButton(
-                    onPressed: () {
-                      app.blocked.remove(b);
-                      app.touch();
+                    onPressed: () async {
+                      try {
+                        await app.unblock(b);
+                      } on ApiException catch (e) {
+                        if (context.mounted) toast(context, e.friendly);
+                      }
                     },
                     child: Text('Unblock', style: T.body(13, color: C.a700, weight: FontWeight.w500)),
                   ),
@@ -389,7 +491,7 @@ class DeleteAccountScreen extends StatelessWidget {
           const Hairline(),
           const Kicker('Deleted within 30 days'),
           item('Your name, phone number and passkeys'),
-          item('Your ${app.postedCount} reports, photos and votes'),
+          item('Your ${app.myReports.length} reports and votes'),
           item('Reputation and blocked list'),
           const Kicker('Kept'),
           Text('Anonymous moderation logs · 90 days', style: T.body(13)),
@@ -411,10 +513,16 @@ class DeleteAccountScreen extends StatelessWidget {
             ]),
           ),
           const Spacer(),
-          Btn('Confirm with passkey & delete', kind: BtnKind.dark, icon: I.fingerprintPattern, onTap: () async {
+          Btn('Delete my account', kind: BtnKind.dark, icon: I.trash2, onTap: () async {
             final ok = await _confirm(context, 'Delete your account?', 'This can\'t be undone.', action: 'Delete');
             if (!ok || !context.mounted) return;
-            app.deleteAccount();
+            try {
+              await app.deleteAccount();
+            } on ApiException catch (e) {
+              if (context.mounted) toast(context, e.friendly);
+              return;
+            }
+            if (!context.mounted) return;
             Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const AccountDeletedScreen()), (_) => false);
           }),

@@ -1,7 +1,7 @@
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 
-/** A WebAuthn credential. Registration/assertion is still a TODO (see passkeys.controller.ts). */
+/** A WebAuthn credential registered through `POST /auth/passkeys/registration/*`. */
 @Index('IDX_passkeys_userId', ['userId'])
 @Entity('passkeys')
 export class Passkey {
@@ -25,6 +25,10 @@ export class Passkey {
 
   @Column({ type: 'bigint', default: 0 })
   signCount: string;
+
+  /** Authenticator transports reported at registration (internal, hybrid, …), passed back in allowCredentials. */
+  @Column({ type: 'varchar', length: 16, array: true, nullable: true })
+  transports: string[] | null;
 
   @Column({ type: 'varchar', length: 80, nullable: true })
   label: string | null;

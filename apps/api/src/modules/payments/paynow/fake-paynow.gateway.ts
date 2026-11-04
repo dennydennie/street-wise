@@ -16,7 +16,7 @@ export class FakePaynowGateway implements PaynowGateway {
     return {
       pollUrl: null,
       redirectUrl: null,
-      instructions: `FAKE PAYNOW: no prompt was sent to ${payment.phone}. Complete it with POST /payments/${payment.reference}/fake-result.`,
+      instructions: `FAKE PAYNOW: no prompt was sent to ${payment.phone}. Complete it with POST /payments/${payment.reference}/fake-result (or wait for FAKE_PAYNOW_AUTO_SETTLE_SECONDS).`,
       paynowReference: `FAKE-${payment.reference}`,
     };
   }
@@ -34,7 +34,7 @@ export class FakePaynowGateway implements PaynowGateway {
     return readPaynowResult(rawBody, FAKE_PAYNOW_INTEGRATION_KEY);
   }
 
-  static buildResult(reference: string, amountCents: number, status: 'Paid' | 'Cancelled' | 'Failed'): string {
+  static buildResult(reference: string, amountCents: number, status: 'Paid' | 'Cancelled' | 'Failed', error?: string): string {
     return signPaynowMessage(
       [
         ['reference', reference],
@@ -42,8 +42,14 @@ export class FakePaynowGateway implements PaynowGateway {
         ['amount', formatAmount(amountCents)],
         ['status', status],
         ['pollurl', ''],
+        ...(error ? ([['error', error]] as const) : []),
       ],
       FAKE_PAYNOW_INTEGRATION_KEY,
     );
+  }
+
+  /** What a fake EcoCash wallet does: numbers ending 0000 have no money. */
+  static ecocashOutcome(phone: string | null): { status: 'Paid' | 'Failed'; error?: string } {
+    return phone?.endsWith('0000') ? { status: 'Failed', error: 'Insufficient balance' } : { status: 'Paid' };
   }
 }

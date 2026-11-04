@@ -1,17 +1,52 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, DataSource, EntityManager, Repository } from 'typeorm';
-import type { MyReport, Report as ReportResponse } from '@streetwise/shared';
+import {
+  REPORT_CAPTURED_AT_MAX_AGE_DAYS,
+  type MyReport,
+  type Report as ReportResponse,
+  type ReportAnalysis,
+} from '@streetwise/shared';
+import { AreasService } from '../areas/areas.service';
 import { User } from '../users/entities/user.entity';
+import { toPublicSummary } from './analysis/redact';
+import { REPORT_ANALYZER, type ReportAnalyzer } from './analysis/report-analyzer';
+import { severityFor } from './analysis/rule-based-report-analyzer';
 import { CreateReportDto, FlagDto, UpdateReportDto } from './dto/reports.dto';
 import { ModerationLogEntry } from './entities/moderation-log.entity';
 import { ReportFlag } from './entities/report-flag.entity';
 import { ReportVote } from './entities/report-vote.entity';
 import { Report } from './entities/report.entity';
 import { UserBlock } from './entities/user-block.entity';
+import { toReportResponse } from './report.mapper';
 import { applyVote, isOnMap, myReportStatus, reportExpiry, shouldSendToReview } from './report-rules';
 
+export { toReportResponse } from './report.mapper';
+
 const MAX_REPORTS_PER_BBOX = 500;
+/** Phones and servers disagree by a little; a capturedAt this far ahead is still "now". */
+const CLOCK_SKEW_MS = 2 * 60_000;
+const DAY_MS = 86_400_000;
+
+/** Validates an offline capture time: not in the future, at most 7 days old. */
+export const resolveCapturedAt = (value: string | undefined, now: Date): Date => {
+  if (!value) return now;
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) throw new BadRequestException('capturedAt must be an ISO 8601 date');
+  if (at.getTime() > now.getTime() + CLOCK_SKEW_MS) throw new BadRequestException('capturedAt cannot be in the future');
+  if (at.getTime() < now.getTime() - REPORT_CAPTURED_AT_MAX_AGE_DAYS * DAY_MS) {
+    throw new BadRequestException(`capturedAt must be within the last ${REPORT_CAPTURED_AT_MAX_AGE_DAYS} days`);
+  }
+  return at.getTime() > now.getTime() ? now : at;
+};
 
 @Injectable()
 export class ReportsService {
@@ -20,7 +55,14 @@ export class ReportsService {
     @InjectRepository(Report) private readonly reports: Repository<Report>,
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(UserBlock) private readonly blocks: Repository<UserBlock>,
+    @Inject(REPORT_ANALYZER) private readonly analyzer: ReportAnalyzer,
+    private readonly areas: AreasService,
   ) {}
+
+  /** "Heard: … → Pothole" preview before posting. */
+  async analyze(transcript: string): Promise<ReportAnalysis> {
+    return this.analyzer.analyze(transcript.trim());
+  }
 
   /** Live, unexpired reports in the box, minus those from reporters the viewer blocked. */
   async listInBbox(bbox: string, viewerId: string | undefined, now = new Date()): Promise<ReportResponse[]> {
@@ -51,16 +93,37 @@ export class ReportsService {
 
   async create(userId: string, body: CreateReportDto, now = new Date()): Promise<ReportResponse> {
     await this.assertAgreedToRules(userId);
+    const capturedAt = resolveCapturedAt(body.capturedAt, now);
+    const transcript = body.transcript?.trim() || null;
+    const analysis = transcript ? await this.analyzer.analyze(transcript) : null;
+    const type = body.type ?? analysis?.type ?? null;
+    if (!type) {
+      throw new UnprocessableEntityException({
+        code: 'REPORT_TYPE_UNKNOWN',
+        message: "Couldn't tell what kind of hazard that is. Pick a type and try again.",
+        analysis,
+      });
+    }
+    const note = body.note?.trim() || null;
     const draft = body.draft === true;
+    const area = draft ? null : await this.areas.assign({ lat: body.lat, lng: body.lng });
     const report = await this.reports.save(
       this.reports.create({
         reporterId: userId,
-        type: body.type,
+        type,
         lat: body.lat,
         lng: body.lng,
-        note: body.note?.trim() || null,
+        note,
+        transcript,
+        summary: analysis?.summary || (note ? toPublicSummary(note).summary : null),
+        severity: analysis && analysis.type === type ? analysis.severity : severityFor(type, 0),
+        tags: analysis?.tags ?? [],
+        heading: body.heading ?? null,
+        capturedAt,
+        areaId: area?.id ?? null,
+        locationName: area?.name ?? null,
         status: draft ? 'draft' : 'live',
-        expiresAt: draft ? null : reportExpiry(body.type, now),
+        expiresAt: draft ? null : reportExpiry(type, capturedAt),
       }),
     );
     return toReportResponse(report, userId);
@@ -72,10 +135,16 @@ export class ReportsService {
     if (body.lat !== undefined) report.lat = body.lat;
     if (body.lng !== undefined) report.lng = body.lng;
     if (body.note !== undefined) report.note = body.note?.trim() || null;
+    const moved = body.lat !== undefined || body.lng !== undefined;
     if (body.publish && report.status === 'draft') {
       await this.assertAgreedToRules(userId);
       report.status = 'live';
       report.expiresAt = reportExpiry(report.type, now);
+    }
+    if (report.status !== 'draft' && (moved || !report.areaId)) {
+      const area = await this.areas.assign({ lat: report.lat, lng: report.lng });
+      report.areaId = area.id;
+      report.locationName = area.name;
     }
     return toReportResponse(await this.reports.save(report), userId);
   }
@@ -197,17 +266,3 @@ export class ReportsService {
     return { stillThere: count('still_there'), gone: count('gone') };
   }
 }
-
-export const toReportResponse = (row: Report, viewerId?: string): ReportResponse => ({
-  id: row.id,
-  type: row.type,
-  lat: row.lat,
-  lng: row.lng,
-  note: row.note,
-  status: row.status,
-  stillThereCount: row.stillThereCount,
-  goneCount: row.goneCount,
-  expiresAt: row.expiresAt?.toISOString() ?? null,
-  createdAt: row.createdAt.toISOString(),
-  isMine: viewerId !== undefined && row.reporterId === viewerId,
-});

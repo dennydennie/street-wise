@@ -1,4 +1,4 @@
-import type { PassId, ReportType } from './enums';
+import type { PassId, ReportType, TimeBand } from './enums';
 
 /** Zimbabwe numbers in E.164: +263 followed by nine digits (e.g. +263771234567). */
 export const ZW_PHONE_PATTERN = /^\+263[1-9]\d{8}$/;
@@ -52,3 +52,56 @@ export const findPass = (id: string): PassCatalogueItem | undefined => PASS_CATA
 /** `SWZ-` followed by six characters from an alphabet without 0/O/1/I. */
 export const PAYMENT_REFERENCE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 export const PAYMENT_REFERENCE_PATTERN = /^SWZ-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$/;
+
+// ── Voice reports, areas and briefings ──────────────
+/** Raw speech text kept with a report; only ever returned to its reporter. */
+export const REPORT_TRANSCRIPT_MAX_LENGTH = 500;
+/** Redacted, public one-liner derived from the transcript. */
+export const REPORT_SUMMARY_MAX_LENGTH = 160;
+export const REPORT_SEVERITY_MIN = 1;
+export const REPORT_SEVERITY_MAX = 5;
+/** A pin captured offline may be posted up to this many days later. */
+export const REPORT_CAPTURED_AT_MAX_AGE_DAYS = 7;
+
+export const REPORT_TYPE_LABELS: Record<ReportType, string> = {
+  pothole: 'Pothole',
+  robot_out: 'Robot out',
+  kombi_stop: 'Kombi stop',
+  flooding: 'Flooding',
+  crime_hotspot: 'Crime hotspot',
+  camera: 'Camera',
+};
+
+/** How much one item of each type weighs in a briefing score. */
+export const REPORT_TYPE_WEIGHTS: Record<ReportType, number> = {
+  crime_hotspot: 5,
+  flooding: 4,
+  robot_out: 3,
+  pothole: 2,
+  kombi_stop: 2,
+  camera: 2,
+};
+
+/** Africa/Harare local hours, start inclusive, end exclusive; `night` wraps midnight. */
+export const TIME_BAND_HOURS: Record<TimeBand, { start: number; end: number }> = {
+  morning: { start: 5, end: 10 },
+  midday: { start: 10, end: 16 },
+  evening: { start: 16, end: 20 },
+  night: { start: 20, end: 5 },
+};
+export const BRIEFING_TIME_ZONE = 'Africa/Harare';
+
+/** Reports within this distance of an area centre belong to it. */
+export const AREA_RADIUS_M = 200;
+export const BRIEFING_HISTORY_DAYS = 90;
+export const BRIEFING_DEFAULT_RADIUS_M = 2000;
+export const BRIEFING_MAX_RADIUS_M = 10000;
+export const BRIEFING_DEFAULT_LIMIT = 10;
+export const BRIEFING_MAX_LIMIT = 30;
+export const BRIEFING_HIGH_SCORE = 12;
+export const BRIEFING_MEDIUM_SCORE = 5;
+
+export const HARARE_CENTRE = { lat: -17.8292, lng: 31.0522 } as const;
+
+/** Server transcription upload limit. */
+export const TRANSCRIPTION_MAX_BYTES = 2 * 1024 * 1024;

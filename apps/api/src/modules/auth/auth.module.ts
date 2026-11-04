@@ -8,16 +8,19 @@ import { AuthService } from './auth.service';
 import { OtpChallenge } from './entities/otp-challenge.entity';
 import { Passkey } from './entities/passkey.entity';
 import { Session } from './entities/session.entity';
+import { WebauthnChallenge } from './entities/webauthn-challenge.entity';
+import { PasskeyCeremonyService } from './passkeys/passkey-ceremony.service';
 import { MyPasskeysController, PasskeyCeremonyController } from './passkeys/passkeys.controller';
 import { PasskeysService } from './passkeys/passkeys.service';
 import { ConsoleSmsSender, SMS_SENDER } from './sms/sms-sender';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, OtpChallenge, Session, Passkey])],
+  imports: [TypeOrmModule.forFeature([User, OtpChallenge, Session, Passkey, WebauthnChallenge])],
   controllers: [AuthController, PasskeyCeremonyController, MyPasskeysController],
   providers: [
     AuthService,
     PasskeysService,
+    PasskeyCeremonyService,
     // Only `console` exists today; add a real provider here and in env.schema.ts.
     { provide: SMS_SENDER, useClass: ConsoleSmsSender },
     { provide: APP_GUARD, useClass: AuthGuard },

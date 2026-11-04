@@ -41,3 +41,20 @@ export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
 export const SIGN_IN_METHODS = ['phone', 'passkey'] as const;
 export type SignInMethod = (typeof SIGN_IN_METHODS)[number];
+
+/** Africa/Harare local time-of-day bands used by briefings (see docs/briefings.md). */
+export const TIME_BANDS = ['morning', 'midday', 'evening', 'night'] as const;
+export type TimeBand = (typeof TIME_BANDS)[number];
+
+export const BRIEFING_PRIORITIES = ['high', 'medium', 'low'] as const;
+export type BriefingPriority = (typeof BRIEFING_PRIORITIES)[number];
+
+/** en = English, sn = Shona, nd = Ndebele. */
+export const TRANSCRIPTION_LANGUAGES = ['en', 'sn', 'nd'] as const;
+export type TranscriptionLanguage = (typeof TRANSCRIPTION_LANGUAGES)[number];
+
+export const TRANSCRIPTION_PROVIDERS = ['none', 'openai'] as const;
+export type TranscriptionProvider = (typeof TRANSCRIPTION_PROVIDERS)[number];
+
+export const MAP_PROVIDERS = ['mapbox', 'osm'] as const;
+export type MapProvider = (typeof MAP_PROVIDERS)[number];

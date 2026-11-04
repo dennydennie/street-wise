@@ -16,5 +16,6 @@ export const readPaynowResult = (rawBody: string, integrationKey: string): Payno
     paynowReference: fieldValue(fields, 'paynowreference') ?? null,
     amountCents,
     status: mapPaynowStatus(status),
+    error: fieldValue(fields, 'error')?.trim().slice(0, 160) || null,
   };
 };

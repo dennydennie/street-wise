@@ -1,9 +1,26 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsLatitude, IsLongitude, IsOptional, IsString, IsUUID, Matches, MaxLength, ValidateIf } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsISO8601,
+  IsLatitude,
+  IsLongitude,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from 'class-validator';
 import {
   REPORT_FLAG_REASONS,
   REPORT_NOTE_MAX_LENGTH,
+  REPORT_TRANSCRIPT_MAX_LENGTH,
   REPORT_TYPES,
   REPORT_VOTES,
   type ReportFlagReason,
@@ -20,9 +37,11 @@ export class ListReportsQuery {
 }
 
 export class CreateReportDto {
-  @ApiProperty({ enum: REPORT_TYPES })
-  @IsIn(REPORT_TYPES)
-  type: ReportType;
+  /** Optional when `transcript` is given: the server infers it (422 REPORT_TYPE_UNKNOWN if it cannot). */
+  @ApiPropertyOptional({ enum: REPORT_TYPES })
+  @ValidateIf((body: CreateReportDto) => body.type !== undefined || body.transcript === undefined)
+  @IsIn(REPORT_TYPES, { message: `type must be one of ${REPORT_TYPES.join(', ')} (or send a transcript)` })
+  type?: ReportType;
 
   @ApiProperty({ example: -17.8292 })
   @Type(() => Number)
@@ -45,6 +64,37 @@ export class CreateReportDto {
   @IsOptional()
   @IsBoolean()
   draft?: boolean;
+
+  /** What the driver said. Kept private to the reporter; a redacted summary is made public. */
+  @ApiPropertyOptional({ maxLength: REPORT_TRANSCRIPT_MAX_LENGTH, example: 'robot not working at Seke and Cripps' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(REPORT_TRANSCRIPT_MAX_LENGTH)
+  transcript?: string;
+
+  /** Direction of travel, degrees 0–359. */
+  @ApiPropertyOptional({ minimum: 0, maximum: 359 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(359)
+  heading?: number;
+
+  /** When the driver saw it (offline pins). Not in the future, at most 7 days old. Defaults to now. */
+  @ApiPropertyOptional({ example: '2026-11-04T07:45:00+02:00' })
+  @IsOptional()
+  @IsISO8601({ strict: true })
+  capturedAt?: string;
+}
+
+export class AnalyzeReportDto {
+  @ApiProperty({ maxLength: REPORT_TRANSCRIPT_MAX_LENGTH, example: 'smash and grab at the lights, Seke and Cripps' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(REPORT_TRANSCRIPT_MAX_LENGTH)
+  transcript: string;
 }
 
 export class UpdateReportDto {

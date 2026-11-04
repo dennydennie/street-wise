@@ -29,7 +29,7 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>streetwise_zw</title>
+  <title>StreetWise ZW</title>
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
@@ -41,6 +41,8 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+  <!-- WebAuthn bridge for the passkeys plugin; must load before Flutter starts. -->
+  <script src="passkeys_bundle.js"></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

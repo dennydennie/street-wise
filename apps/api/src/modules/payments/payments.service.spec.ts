@@ -20,6 +20,7 @@ const setup = () => {
     amountCents: 150,
     currency: 'USD',
     paidAt: null,
+    failureReason: null,
     paynowReference: null,
     redirectUrl: null,
     instructions: null,
@@ -95,5 +96,30 @@ describe('PaymentsService Paynow result', () => {
     await service.handlePaynowResult(FakePaynowGateway.buildResult('SWZ-7Q4K2M', 150, 'Cancelled'));
     expect(payment.status).toBe('cancelled');
     expect(passes.grantForPayment).not.toHaveBeenCalled();
+  });
+});
+
+describe('PaymentsService fake EcoCash auto-settle', () => {
+  it('fails a wallet ending 0000 with "Insufficient balance" through the result handler', async () => {
+    const { service, payment, passes } = setup();
+    await service.settleFakeEcocash('SWZ-7Q4K2M', 150, '+263770000000');
+    expect(payment.status).toBe('failed');
+    expect(payment.failureReason).toBe('Insufficient balance');
+    expect(passes.grantForPayment).not.toHaveBeenCalled();
+    expect((await service.getForUser(userId, 'SWZ-7Q4K2M')).failureReason).toBe('Insufficient balance');
+  });
+
+  it('pays any other wallet and activates the pass', async () => {
+    const { service, payment, passes } = setup();
+    await service.settleFakeEcocash('SWZ-7Q4K2M', 150, '+263771234567');
+    expect(payment.status).toBe('paid');
+    expect(payment.failureReason).toBeNull();
+    expect(passes.grantForPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives a default reason when Paynow reports a plain failure', async () => {
+    const { service, payment } = setup();
+    await service.handlePaynowResult(FakePaynowGateway.buildResult('SWZ-7Q4K2M', 150, 'Failed'));
+    expect(payment.failureReason).toBe('Payment failed');
   });
 });

@@ -85,7 +85,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
             const SizedBox(height: 14),
             Btn(cta, onTap: () {
-              if (step == 1) app.locationAlways = true;
+              if (step == 1) {
+                app.locationAlways = true;
+                app.touch();
+                app.locate(request: true); // OS permission prompt, after the prominent disclosure
+              }
               _next();
             }),
             const SizedBox(height: 8),

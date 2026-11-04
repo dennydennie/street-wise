@@ -3,9 +3,9 @@ import 'package:streetwise_zw/app/shell.dart';
 import 'package:streetwise_zw/core/theme/tokens.dart';
 import 'package:streetwise_zw/core/widgets/brand.dart';
 import 'package:streetwise_zw/core/widgets/widgets.dart';
+import 'package:streetwise_zw/data/app_state.dart';
 import 'package:streetwise_zw/features/drive/presentation/drive_screens.dart';
-import 'package:streetwise_zw/data/map_data.dart';
-import 'package:streetwise_zw/features/map/presentation/report_detail_screen.dart';
+import 'package:streetwise_zw/features/map/presentation/area_screen.dart';
 
 /// 02 Home · ready to drive. Anonymous listening works without an account.
 class HomeScreen extends StatelessWidget {
@@ -15,6 +15,19 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final app = App.of(context);
+    final b = app.briefing;
+    final areas = b?.areas ?? const <AreaBriefing>[];
+    final liveReports = areas.fold<int>(0, (s, a) => s + a.liveCount);
+    final robotsOut = areas.fold<int>(
+        0, (s, a) => s + a.items.where((i) => i.type == ReportType.robotOut).fold(0, (t, i) => t + i.liveCount));
+    final fresh = [...areas.where((a) => a.alert), ...areas.where((a) => !a.alert && a.liveCount > 0)].take(3).toList();
+    final synced = app.offline
+        ? 'Offline'
+        : app.camerasSyncedAt == null
+            ? 'Syncing…'
+            : 'Synced ${hm(app.camerasSyncedAt!)}';
+
     return Column(children: [
       Container(
         height: 56,
@@ -23,7 +36,7 @@ class HomeScreen extends StatelessWidget {
         child: Row(children: [
           const Wordmark(),
           const Spacer(),
-          const Tag('Synced 07:30'),
+          Tag(synced, neutral: app.offline),
           const SizedBox(width: 10),
           Tooltip(
             message: 'Take the tour',
@@ -41,53 +54,73 @@ class HomeScreen extends StatelessWidget {
         ]),
       ),
       Expanded(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Container(
-              decoration: BoxDecoration(border: Border.all(color: C.divider)),
-              child: IntrinsicHeight(
-                child: Row(children: [
-                  _Stat('20', 'Camera robots', onTap: () => Shell.of(context)?.setTab(1)),
-                  const VerticalDivider(width: 1, color: C.divider),
-                  _Stat('14', 'Reports near you', onTap: () => Shell.of(context)?.setTab(1)),
-                  const VerticalDivider(width: 1, color: C.divider),
-                  _Stat('3', 'Robots out', onTap: () => Shell.of(context)?.setTab(1)),
-                ]),
+        child: RefreshIndicator(
+          color: C.accent,
+          onRefresh: () async {
+            await app.locate();
+            await Future.wait([app.refreshPublic(), app.refreshBriefing()]);
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Container(
+                decoration: BoxDecoration(border: Border.all(color: C.divider)),
+                child: IntrinsicHeight(
+                  child: Row(children: [
+                    _Stat('${app.cameras.length}', 'Camera robots', onTap: () => Shell.of(context)?.setTab(1)),
+                    const VerticalDivider(width: 1, color: C.divider),
+                    _Stat('$liveReports', 'Reports near you', onTap: () => Shell.of(context)?.setTab(1)),
+                    const VerticalDivider(width: 1, color: C.divider),
+                    _Stat('$robotsOut', 'Robots out', onTap: () => Shell.of(context)?.setTab(1)),
+                  ]),
+                ),
               ),
-            ),
-            const SizedBox(height: 44),
-            Center(
-              child: SizedBox(
-                key: startKey,
-                width: 172,
-                height: 172,
-                child: Blueprint(
-                  border: false,
-                  child: Material(
-                    color: C.accent,
-                    child: InkWell(
-                      onTap: () => startDriving(context),
-                      highlightColor: C.a600,
-                      splashColor: C.a700.withValues(alpha: 0.4),
-                      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        const Icon(I.navigation, color: C.n100, size: 28),
-                        const SizedBox(height: 14),
-                        Text('START DRIVING', style: T.heading(23, color: C.n100)),
-                      ]),
+              const SizedBox(height: 40),
+              Center(
+                child: SizedBox(
+                  key: startKey,
+                  width: 172,
+                  height: 172,
+                  child: Blueprint(
+                    border: false,
+                    child: Material(
+                      color: C.accent,
+                      child: InkWell(
+                        onTap: () => startDriving(context),
+                        highlightColor: C.a600,
+                        splashColor: C.a700.withValues(alpha: 0.4),
+                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          const Icon(I.navigation, color: C.n100, size: 28),
+                          const SizedBox(height: 14),
+                          Text('START DRIVING', style: T.heading(23, color: C.n100)),
+                        ]),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 44),
-            const Kicker('Fresh on your routes'),
-            const Hairline(),
-            _Fresh('Robot out · Seke / Cripps', '22 min',
-                onTap: () => openReportDetail(context, sampleReports[1])),
-            _Fresh('Pothole · Rotten Row, left lane', '3 h',
-                onTap: () => openReportDetail(context, sampleReports[2])),
-          ]),
+              const SizedBox(height: 40),
+              Kicker(b == null ? 'Fresh on your routes' : 'Fresh on your routes · ${b.timeBandLabel.toLowerCase()}'),
+              const Hairline(),
+              if (app.briefingLoading && b == null)
+                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('Checking your area…', style: T.body(12.5, color: C.n700)))
+              else if (fresh.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: Text(app.offline ? 'Offline — camera alerts still work from the saved list.' : 'All clear near you right now.',
+                      style: T.body(12.5, color: C.n700)),
+                )
+              else
+                for (final a in fresh)
+                  _Fresh(
+                    a.lead == null ? a.name : '${a.lead!.label} · ${a.name}',
+                    a.lead?.latestAt == null ? '' : ago(a.lead!.latestAt).replaceAll(' ago', ''),
+                    alert: a.alert,
+                    onTap: () => openArea(context, a),
+                  ),
+            ]),
+          ),
         ),
       ),
     ]);
@@ -115,9 +148,10 @@ class _Stat extends StatelessWidget {
 }
 
 class _Fresh extends StatelessWidget {
-  const _Fresh(this.title, this.age, {this.onTap});
+  const _Fresh(this.title, this.age, {this.onTap, this.alert = false});
   final String title;
   final String age;
+  final bool alert;
   final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) => InkWell(
@@ -126,7 +160,8 @@ class _Fresh extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: C.divider))),
           child: Row(children: [
-            Expanded(child: Text(title, style: T.body(13))),
+            if (alert) ...[Container(width: 6, height: 6, color: C.a700), const SizedBox(width: 8)],
+            Expanded(child: Text(title, style: T.body(13), maxLines: 1, overflow: TextOverflow.ellipsis)),
             Text(age, style: T.body(11.5, color: C.n700)),
           ]),
         ),

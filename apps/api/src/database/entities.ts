@@ -1,6 +1,8 @@
+import { Area } from '../modules/areas/entities/area.entity';
 import { OtpChallenge } from '../modules/auth/entities/otp-challenge.entity';
 import { Passkey } from '../modules/auth/entities/passkey.entity';
 import { Session } from '../modules/auth/entities/session.entity';
+import { WebauthnChallenge } from '../modules/auth/entities/webauthn-challenge.entity';
 import { Camera } from '../modules/cameras/entities/camera.entity';
 import { UserPass } from '../modules/passes/entities/user-pass.entity';
 import { Payment } from '../modules/payments/entities/payment.entity';
@@ -17,7 +19,9 @@ export const entities = [
   OtpChallenge,
   Session,
   Passkey,
+  WebauthnChallenge,
   Camera,
+  Area,
   Report,
   ReportVote,
   ReportFlag,

@@ -1,44 +1,63 @@
-import { Controller, Delete, Get, HttpCode, NotImplementedException, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server';
 import type { AuthenticatedUser } from '../auth-token';
 import { CurrentUser } from '../current-user.decorator';
+import {
+  PasskeyAuthenticationOptionsDto,
+  PasskeyAuthenticationVerifyDto,
+  PasskeyRegistrationOptionsDto,
+  PasskeyRegistrationVerifyDto,
+} from '../dto/passkeys.dto';
 import { Public } from '../public.decorator';
+import { PasskeyCeremonyService } from './passkey-ceremony.service';
 import { PasskeysService } from './passkeys.service';
 
-const NOT_YET = 'Passkey (WebAuthn) ceremonies are not implemented yet.';
-
 /**
- * TODO(passkeys): implement the WebAuthn ceremonies (e.g. with @simplewebauthn/server):
- * store a short-lived challenge per user/session, verify attestation on
- * registration (RP id = the app's asset-links domain for Android Credential
- * Manager, and the web origin for Flutter web), verify assertions and the sign
- * counter on sign-in, then create a Session exactly like OTP verify does.
+ * WebAuthn ceremonies. RP id = WEBAUTHN_RP_ID (the asset-links domain for
+ * Android Credential Manager, `localhost` in dev); accepted origins =
+ * WEBAUTHN_ORIGINS + android:apk-key-hash origins from the signing certs.
  */
 @ApiTags('passkeys')
 @Controller('auth/passkeys')
 export class PasskeyCeremonyController {
+  constructor(private readonly ceremonies: PasskeyCeremonyService) {}
+
   @ApiBearerAuth()
   @Post('registration/options')
-  registrationOptions() {
-    throw new NotImplementedException(NOT_YET);
+  @HttpCode(200)
+  registrationOptions(@CurrentUser() user: AuthenticatedUser, @Body() body: PasskeyRegistrationOptionsDto) {
+    return this.ceremonies.registrationOptions(user.userId, body.label);
   }
 
   @ApiBearerAuth()
   @Post('registration/verify')
-  registrationVerify() {
-    throw new NotImplementedException(NOT_YET);
+  @HttpCode(201)
+  registrationVerify(@CurrentUser() user: AuthenticatedUser, @Body() body: PasskeyRegistrationVerifyDto) {
+    return this.ceremonies.registrationVerify(user.userId, {
+      challengeId: body.challengeId,
+      response: body.response as unknown as RegistrationResponseJSON,
+      label: body.label,
+    });
   }
 
   @Public()
   @Post('authentication/options')
-  authenticationOptions() {
-    throw new NotImplementedException(NOT_YET);
+  @HttpCode(200)
+  authenticationOptions(@Body() body: PasskeyAuthenticationOptionsDto) {
+    return this.ceremonies.authenticationOptions(body.phone);
   }
 
+  /** Same response as `POST /auth/otp/verify`. */
   @Public()
   @Post('authentication/verify')
-  authenticationVerify() {
-    throw new NotImplementedException(NOT_YET);
+  @HttpCode(200)
+  authenticationVerify(@Body() body: PasskeyAuthenticationVerifyDto) {
+    return this.ceremonies.authenticationVerify({
+      challengeId: body.challengeId,
+      response: body.response as unknown as AuthenticationResponseJSON,
+      deviceLabel: body.deviceLabel,
+    });
   }
 }
 

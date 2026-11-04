@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleDestroy,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, MoreThan, Repository } from 'typeorm';
@@ -17,9 +18,12 @@ import { generatePaymentReference } from './payment-reference';
 import { FakePaynowGateway } from './paynow/fake-paynow.gateway';
 import { PAYNOW_GATEWAY, PaynowGateway, PaynowGatewayError } from './paynow/paynow-gateway';
 
+const DEFAULT_FAILURE_REASON = { failed: 'Payment failed', cancelled: 'Payment cancelled' } as const;
+
 @Injectable()
-export class PaymentsService {
+export class PaymentsService implements OnModuleDestroy {
   private readonly logger = new Logger('Payments');
+  private readonly autoSettleTimers = new Set<NodeJS.Timeout>();
 
   constructor(
     private readonly config: AppConfigService,
@@ -63,9 +67,14 @@ export class PaymentsService {
         instructions: started.instructions,
         paynowReference: started.paynowReference,
       });
-      return toPaymentResponse(await this.payments.save(payment));
+      const saved = await this.payments.save(payment);
+      this.scheduleFakeAutoSettle(saved);
+      return toPaymentResponse(saved);
     } catch (error) {
-      await this.payments.update({ id: payment.id }, { status: 'failed' });
+      await this.payments.update(
+        { id: payment.id },
+        { status: 'failed', failureReason: error instanceof PaynowGatewayError ? error.message.slice(0, 160) : 'Payment could not be started' },
+      );
       if (error instanceof PaynowGatewayError) {
         throw new BadGatewayException({ code: 'PAYNOW_UNAVAILABLE', message: error.message, reference: payment.reference });
       }
@@ -114,12 +123,16 @@ export class PaymentsService {
       if (result.status === 'paid') {
         payment.status = 'paid';
         payment.paidAt = now;
+        payment.failureReason = null;
         await repo.save(payment);
         if (payment.userId) {
           await this.passes.grantForPayment(manager, { userId: payment.userId, passId: payment.passId, paymentId: payment.id }, now);
         }
       } else {
         payment.status = result.status === 'pending' ? 'pending' : result.status;
+        if (result.status === 'failed' || result.status === 'cancelled') {
+          payment.failureReason = result.error ?? DEFAULT_FAILURE_REASON[result.status];
+        }
         await repo.save(payment);
       }
       return { status: payment.status };
@@ -133,6 +146,37 @@ export class PaymentsService {
     if (!payment) throw new NotFoundException('Payment not found');
     const status = outcome === 'paid' ? 'Paid' : outcome === 'cancelled' ? 'Cancelled' : 'Failed';
     return this.handlePaynowResult(FakePaynowGateway.buildResult(reference, payment.amountCents, status));
+  }
+
+  /**
+   * PAYNOW_MODE=fake + FAKE_PAYNOW_AUTO_SETTLE_SECONDS: an EcoCash payment
+   * settles by itself, through the same hashed result handler Paynow would
+   * call. Wallets ending 0000 fail with "Insufficient balance".
+   */
+  private scheduleFakeAutoSettle(payment: Payment): void {
+    const seconds = this.config.fakePaynowAutoSettleSeconds;
+    if (this.config.paynowMode !== 'fake' || !seconds || payment.method !== 'ecocash') return;
+    const timer = setTimeout(() => {
+      this.autoSettleTimers.delete(timer);
+      void this.settleFakeEcocash(payment.reference, payment.amountCents, payment.payerPhone);
+    }, seconds * 1000);
+    timer.unref?.();
+    this.autoSettleTimers.add(timer);
+  }
+
+  async settleFakeEcocash(reference: string, amountCents: number, phone: string | null): Promise<void> {
+    const outcome = FakePaynowGateway.ecocashOutcome(phone);
+    try {
+      const result = await this.handlePaynowResult(FakePaynowGateway.buildResult(reference, amountCents, outcome.status, outcome.error));
+      this.logger.log(`Fake EcoCash ${reference} auto-settled: ${result.status}`);
+    } catch (error) {
+      this.logger.warn(`Fake EcoCash ${reference} auto-settle failed: ${(error as Error).message}`);
+    }
+  }
+
+  onModuleDestroy(): void {
+    for (const timer of this.autoSettleTimers) clearTimeout(timer);
+    this.autoSettleTimers.clear();
   }
 
   get isFakeMode(): boolean {
@@ -160,4 +204,5 @@ export const toPaymentResponse = (p: Payment): PaymentResponse => ({
   instructions: p.instructions,
   createdAt: p.createdAt.toISOString(),
   paidAt: p.paidAt?.toISOString() ?? null,
+  failureReason: p.failureReason ?? null,
 });

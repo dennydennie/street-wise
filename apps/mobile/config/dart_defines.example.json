@@ -1,0 +1,5 @@
+{
+  "API_BASE_URL": "http://localhost:4100",
+  "MAPBOX_PUBLIC_TOKEN": "",
+  "MAPBOX_STYLE": "mapbox/streets-v12"
+}

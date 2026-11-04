@@ -20,6 +20,17 @@ class AccountScreen extends StatelessWidget {
       const TopBar('Account', back: false),
       Expanded(
         child: ListView(padding: const EdgeInsets.fromLTRB(20, 4, 20, 20), children: [
+          if (app.signedIn && !app.agreedToRules)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Blueprint(
+                padding: const EdgeInsets.all(12),
+                child: Row(children: [
+                  Expanded(child: Text('Accept the Community rules to post reports.', style: T.body(13))),
+                  TextButton(onPressed: () => push(context, const CreatePasskeyScreen()), child: const Text('Review')),
+                ]),
+              ),
+            ),
           if (app.signedIn)
             InkWell(
               onTap: () => _editName(context),
@@ -70,7 +81,7 @@ class AccountScreen extends StatelessWidget {
             RowTile(
               icon: I.fingerprintPattern,
               title: 'Sign-in & passkeys',
-              subtitle: '${app.passkeys.length} passkey${app.passkeys.length == 1 ? '' : 's'} · phone verified',
+              subtitle: '${app.passkeys.length} passkey${app.passkeys.length == 1 ? '' : 's'}${app.phone.isEmpty ? '' : ' · phone verified'}',
               onTap: () => push(context, const SignInPasskeysScreen()),
             ),
           RowTile(icon: I.slidersHorizontal, title: 'Alerts & voice', onTap: () => push(context, const AlertsVoiceScreen())),
@@ -78,7 +89,7 @@ class AccountScreen extends StatelessWidget {
           RowTile(
             icon: I.ban,
             title: 'Blocked reporters',
-            subtitle: app.blocked.isEmpty ? 'None' : '${app.blocked.length} hidden',
+            subtitle: app.blocks.isEmpty ? 'None' : '${app.blocks.length} hidden',
             onTap: () => push(context, const BlockedScreen()),
           ),
           RowTile(icon: I.circleHelp, title: 'Help & support', onTap: () => push(context, const HelpScreen())),
@@ -88,10 +99,11 @@ class AccountScreen extends StatelessWidget {
               icon: I.logOut,
               title: 'Sign out',
               chevron: false,
-              onTap: () {
-                app.signOut();
-                Shell.of(context)?.setTab(0);
-                toast(context, 'Signed out · still listening for cameras');
+              onTap: () async {
+                final shell = Shell.of(context);
+                await app.signOut();
+                shell?.setTab(0);
+                if (context.mounted) toast(context, 'Signed out · still listening for cameras');
               },
             ),
             RowTile(icon: I.trash2, title: 'Delete account', onTap: () => push(context, const DeleteAccountScreen())),
@@ -118,8 +130,11 @@ class AccountScreen extends StatelessWidget {
       ),
     );
     if (v != null && v.trim().isNotEmpty) {
-      app.displayName = v.trim();
-      app.touch();
+      try {
+        await app.rename(v.trim());
+      } catch (_) {
+        if (context.mounted) toast(context, 'Couldn\'t save your name. Try again.');
+      }
     }
   }
 }

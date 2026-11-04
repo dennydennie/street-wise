@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { configureApp } from './bootstrap';
 import { AppConfigService } from './config/app-config.service';
+import { corsOriginMatcher } from './config/origins';
 import { setupSwagger, shouldExposeSwaggerUi } from './openapi';
 
 const logger = new Logger('Bootstrap');
@@ -13,7 +14,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
   const config = app.get(AppConfigService);
 
-  configureApp(app, { trustProxyHops: config.trustProxyHops });
+  configureApp(app, {
+    trustProxyHops: config.trustProxyHops,
+    corsOrigin: corsOriginMatcher({ corsOrigins: config.corsOrigins, isProduction: config.isProduction }),
+  });
   if (shouldExposeSwaggerUi(config)) {
     setupSwagger(app);
     logger.log(`Swagger UI at ${config.apiPublicBaseUrl}/docs`);

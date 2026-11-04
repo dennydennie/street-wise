@@ -31,3 +31,20 @@ test('payment reference format', () => {
   assert.match('SWZ-7Q4K2M', PAYMENT_REFERENCE_PATTERN);
   assert.doesNotMatch('SWZ-0O1I23', PAYMENT_REFERENCE_PATTERN);
 });
+
+test('a report needs a type unless a transcript is given', () => {
+  const { createReportSchema } = shared;
+  assert.equal(createReportSchema.safeParse({ lat: -17.83, lng: 31.05 }).success, false);
+  assert.equal(createReportSchema.safeParse({ lat: -17.83, lng: 31.05, transcript: 'robot not working' }).success, true);
+  assert.equal(createReportSchema.safeParse({ lat: -17.83, lng: 31.05, type: 'pothole', heading: 360 }).success, false);
+});
+
+test('area briefing carries a 24-hour histogram', () => {
+  const { areaBriefingSchema } = shared;
+  const base = {
+    areaId: '5e0c0000-0000-4000-8000-000000000001', name: 'Seke × Cripps', lat: -17.84, lng: 31.03, distanceM: 10,
+    priority: 'high', score: 20, alert: true, headline: 'h', advice: 'a', items: [],
+  };
+  assert.equal(areaBriefingSchema.safeParse({ ...base, hourly: new Array(24).fill(0) }).success, true);
+  assert.equal(areaBriefingSchema.safeParse({ ...base, hourly: [1, 2] }).success, false);
+});

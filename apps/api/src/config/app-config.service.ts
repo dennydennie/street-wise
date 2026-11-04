@@ -30,5 +30,24 @@ export class AppConfigService {
   get paynowIntegrationKey() { return this.get('paynowIntegrationKey'); }
   get paynowAuthEmail() { return this.get('paynowAuthEmail'); }
   get paynowReturnUrl() { return this.get('paynowReturnUrl'); }
+  get fakePaynowAutoSettleSeconds() { return this.get('fakePaynowAutoSettleSeconds'); }
+  get otpDevEcho() { return this.get('otpDevEcho') && !this.isProduction; }
+  get corsOrigins() { return this.get('corsOrigins'); }
+  get webauthnRpId() { return this.get('webauthnRpId'); }
+  get webauthnRpName() { return this.get('webauthnRpName'); }
+  get webauthnOrigins() { return this.get('webauthnOrigins'); }
+  get androidPackageName() { return this.get('androidPackageName'); }
+  get androidSha256CertFingerprints() { return this.get('androidSha256CertFingerprints'); }
+  get mapboxPublicToken() { return this.get('mapboxPublicToken'); }
+  get mapboxStyle() { return this.get('mapboxStyle'); }
+  get mapboxSecretToken() { return this.get('mapboxSecretToken'); }
+  get geocoder() { return this.get('geocoder'); }
+  get reportAnalyzer() { return this.get('reportAnalyzer'); }
+  get briefingWriter() { return this.get('briefingWriter'); }
+  get anthropicApiKey() { return this.get('anthropicApiKey'); }
+  get anthropicModel() { return this.get('anthropicModel'); }
+  get transcriptionProvider() { return this.get('transcriptionProvider'); }
+  get openaiApiKey() { return this.get('openaiApiKey'); }
+  get openaiTranscribeModel() { return this.get('openaiTranscribeModel'); }
   get paynowResultUrl() { return `${this.get('apiPublicBaseUrl')}/payments/paynow/result`; }
 }

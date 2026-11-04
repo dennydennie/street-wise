@@ -74,6 +74,8 @@ export class UsersService {
       passkeys: passkeys.map(toPasskeyResponse),
       reports: reports.map((r) => ({
         id: r.id, type: r.type, lat: r.lat, lng: r.lng, note: r.note, status: r.status,
+        transcript: r.transcript, summary: r.summary, severity: r.severity, tags: r.tags,
+        heading: r.heading, locationName: r.locationName, capturedAt: r.capturedAt.toISOString(),
         createdAt: r.createdAt.toISOString(), expiresAt: r.expiresAt?.toISOString() ?? null,
       })),
       votes: votes.map((v) => ({ reportId: v.reportId, vote: v.vote, at: v.updatedAt.toISOString() })),
@@ -82,7 +84,7 @@ export class UsersService {
       passes: passes.map((p) => ({ passId: p.passId, startsAt: p.startsAt.toISOString(), endsAt: p.endsAt.toISOString() })),
       payments: payments.map((p) => ({
         reference: p.reference, passId: p.passId, method: p.method, status: p.status,
-        amountCents: p.amountCents, currency: p.currency, payerPhone: p.payerPhone,
+        amountCents: p.amountCents, currency: p.currency, payerPhone: p.payerPhone, failureReason: p.failureReason,
         createdAt: p.createdAt.toISOString(), paidAt: p.paidAt?.toISOString() ?? null,
       })),
     };

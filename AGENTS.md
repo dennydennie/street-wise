@@ -30,12 +30,19 @@ cp .env.local.example .env
 make up
 ```
 
-4. Create the schema and seed the Harare CBD cameras
+4. Create the schema and seed the Harare CBD cameras (and their briefing areas)
 
 ```bash
 pnpm db:migrate
 pnpm db:seed
+pnpm db:seed:demo   # optional: 90-day demo history so /briefings has something to say
 ```
+
+The local template turns on `OTP_DEV_ECHO` (the OTP request returns `devCode`)
+and `FAKE_PAYNOW_AUTO_SETTLE_SECONDS=6` (EcoCash payments settle by themselves;
+wallets ending `0000` fail). Every variable is listed in the README's
+Environment table; `apps/api/src/config/env.schema.ts` refuses the dev-only ones
+in production.
 
 5. Start local apps
 

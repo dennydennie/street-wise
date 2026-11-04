@@ -2,29 +2,60 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-
-import 'package:streetwise_zw/data/app_state.dart';
-import 'package:streetwise_zw/core/widgets/brand.dart';
+import 'package:streetwise_zw/app/shell.dart';
+import 'package:streetwise_zw/core/api/api_client.dart';
+import 'package:streetwise_zw/core/services/passkey_service.dart';
 import 'package:streetwise_zw/core/theme/tokens.dart';
+import 'package:streetwise_zw/core/widgets/brand.dart';
 import 'package:streetwise_zw/core/widgets/widgets.dart';
+import 'package:streetwise_zw/data/app_state.dart';
 import 'package:streetwise_zw/features/legal/presentation/legal_screen.dart';
 import 'package:streetwise_zw/features/onboarding/presentation/onboarding_screen.dart';
-import 'package:streetwise_zw/app/shell.dart';
 
 /// Where to go once the user is signed in (or chose to just listen).
 void continueAfterAuth(BuildContext context) {
   final app = App.read(context);
+  if (app.signedIn && (!app.agreedToRules || app.user?.displayName == null)) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CreatePasskeyScreen()));
+    return;
+  }
   final next = app.onboarded ? const Shell() : const OnboardingScreen();
   Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => next), (_) => false);
 }
 
+String _authError(Object e) => e is ApiException ? e.friendly : 'Something went wrong. Try again.';
+
 // ───────────────────────────── 09 Welcome ─────────────────────────────
 
-class WelcomeScreen extends StatelessWidget {
+class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
+  @override
+  State<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends State<WelcomeScreen> {
+  bool busy = false;
+
+  /// 10 · The OS draws the passkey sheet (Credential Manager / browser WebAuthn).
+  Future<void> _passkey() async {
+    setState(() => busy = true);
+    try {
+      final r = await App.read(context).signInWithPasskey();
+      if (!mounted || r == null) return;
+      continueAfterAuth(context);
+    } catch (e) {
+      if (!mounted) return;
+      if (!isPasskeyCancel(e)) {
+        toast(context, e is ApiException ? e.friendly : 'No passkey found on this device. Use your phone number.');
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final app = App.of(context);
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -34,13 +65,16 @@ class WelcomeScreen extends StatelessWidget {
             const SizedBox(height: 20),
             Text('KNOW THE ROBOT BEFORE YOU REACH IT.', style: T.display(40)),
             const Spacer(),
-            Btn('Sign in with a passkey', icon: I.fingerprintPattern, onTap: () => showPasskeySheet(context)),
-            const SizedBox(height: 10),
+            if (app.config.passkeys) ...[
+              Btn(busy ? 'Waiting for your passkey…' : 'Sign in with a passkey',
+                  icon: I.fingerprintPattern, onTap: busy ? null : _passkey),
+              const SizedBox(height: 10),
+            ],
             Btn.secondary('Use phone number instead',
                 icon: I.smartphone,
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PhoneEntryScreen()))),
             const SizedBox(height: 10),
-            Btn.ghost('Just listen — no account', onTap: () => continueAfterAuth(context)),
+            if (!app.signedIn) Btn.ghost('Just listen — no account', onTap: () => continueAfterAuth(context)),
             const SizedBox(height: 12),
             const LegalLine(),
           ]),
@@ -77,145 +111,31 @@ class LegalLine extends StatelessWidget {
   }
 }
 
-// ───────────────────────────── 10 Passkey system sheet ─────────────────────────────
+// ───────────────────────────── Phone entry ─────────────────────────────
 
-/// Stand-in for Android Credential Manager's sheet. OS-drawn in production, so it keeps
-/// Android's rounded shape rather than the blueprint look.
-Future<void> showPasskeySheet(BuildContext context, {bool create = false}) async {
-  final app = App.read(context);
-  final ok = await showModalBottomSheet<bool>(
-    context: context,
-    backgroundColor: Colors.white,
-    barrierColor: Colors.black.withValues(alpha: 0.45),
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-    builder: (ctx) => _PasskeySheet(create: create, name: app.displayName, phone: app.phoneMasked, initials: app.initials),
-  );
-  if (!context.mounted) return;
-  if (ok == true) {
-    app.signIn();
-    if (create) {
-      app.passkeys.insert(0, Passkey('Google Password Manager', 'Created ${dayMonth(DateTime.now())} 2026 · used today', thisPhone: true));
-    }
-    continueAfterAuth(context);
-  } else if (ok == false) {
-    // "Sign-in options" → phone fallback.
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PhoneEntryScreen()));
-  }
+String toE164(String national) {
+  final d = national.replaceAll(RegExp(r'\D'), '').replaceFirst(RegExp(r'^(263|0)'), '');
+  return '+263$d';
 }
 
-class _PasskeySheet extends StatefulWidget {
-  const _PasskeySheet({required this.create, required this.name, required this.phone, required this.initials});
-  final bool create;
-  final String name;
-  final String phone;
-  final String initials;
-
-  @override
-  State<_PasskeySheet> createState() => _PasskeySheetState();
+String prettyPhone(String e164) {
+  final d = e164.replaceFirst('+263', '');
+  if (d.length != 9) return e164;
+  return '+263 ${d.substring(0, 2)} ${d.substring(2, 5)} ${d.substring(5)}';
 }
-
-class _PasskeySheetState extends State<_PasskeySheet> {
-  bool scanning = false;
-
-  Future<void> _scan() async {
-    setState(() => scanning = true);
-    await Future<void>.delayed(const Duration(milliseconds: 900));
-    if (mounted) Navigator.of(context).pop(true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final g = T.body(14, color: const Color(0xFF1F1F1F));
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 10, 24, 12),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 32, height: 4, decoration: BoxDecoration(color: C.n400, borderRadius: BorderRadius.circular(2))),
-          const SizedBox(height: 18),
-          const Icon(I.keyRound, size: 26, color: C.a700),
-          const SizedBox(height: 12),
-          Text(widget.create ? 'Create a passkey for StreetWise ZW?' : 'Use your passkey for StreetWise ZW?',
-              textAlign: TextAlign.center, style: g.copyWith(fontSize: 20, height: 1.3)),
-          const SizedBox(height: 8),
-          Text(widget.create ? 'It will be saved in Google Password Manager' : 'Saved in Google Password Manager',
-              style: g.copyWith(fontSize: 12.5, color: C.n700)),
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(border: Border.all(color: C.n300), borderRadius: BorderRadius.circular(12)),
-            child: Row(children: [
-              Container(
-                width: 34,
-                height: 34,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(color: C.a100, borderRadius: BorderRadius.circular(6)),
-                child: Text(widget.initials, style: T.heading(15, color: C.a700)),
-              ),
-              const SizedBox(width: 12),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(widget.name, style: g.copyWith(fontWeight: FontWeight.w600, fontSize: 13.5)),
-                Text(widget.phone, style: g.copyWith(fontSize: 11.5, color: C.n700)),
-              ]),
-            ]),
-          ),
-          const SizedBox(height: 20),
-          Semantics(
-            button: true,
-            label: 'Touch the fingerprint sensor',
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: scanning ? null : _scan,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: scanning ? C.a200 : Colors.transparent,
-                  border: Border.all(color: C.a700, width: 1.2),
-                ),
-                child: Icon(scanning ? I.check : I.fingerprintPattern, color: C.a700, size: 30),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(scanning ? 'Verifying…' : 'Touch the fingerprint sensor', style: g.copyWith(fontSize: 12.5, color: C.n700)),
-          const SizedBox(height: 14),
-          Row(children: [
-            if (!widget.create)
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text('Sign-in options', style: g.copyWith(color: C.a700, fontWeight: FontWeight.w600, fontSize: 13)),
-              ),
-            const Spacer(),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Cancel', style: g.copyWith(color: C.a700, fontWeight: FontWeight.w600, fontSize: 13)),
-            ),
-          ]),
-        ]),
-      ),
-    );
-  }
-}
-
-// ───────────────────────────── Phone entry (pre-OTP) ─────────────────────────────
 
 class PhoneEntryScreen extends StatefulWidget {
-  const PhoneEntryScreen({super.key, this.changeOnly = false});
-
-  /// From Account › Sign-in: verify a new number then return.
-  final bool changeOnly;
-
+  const PhoneEntryScreen({super.key});
   @override
   State<PhoneEntryScreen> createState() => _PhoneEntryScreenState();
 }
 
 class _PhoneEntryScreenState extends State<PhoneEntryScreen> {
-  late final ctrl = TextEditingController(text: widget.changeOnly ? '' : '77 123 4821');
+  final ctrl = TextEditingController();
+  bool sending = false;
 
-  String get digits => ctrl.text.replaceAll(RegExp(r'\D'), '');
-  bool get valid => RegExp(r'^7[13478]\d{7}$').hasMatch(digits);
+  String get e164 => toE164(ctrl.text);
+  bool get valid => RegExp(r'^\+263[1-9]\d{8}$').hasMatch(e164);
 
   @override
   void dispose() {
@@ -223,14 +143,28 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen> {
     super.dispose();
   }
 
+  Future<void> _send() async {
+    setState(() => sending = true);
+    try {
+      final r = await App.read(context).requestOtp(e164);
+      if (!mounted) return;
+      Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => OtpScreen(phone: e164, resendAfter: r.resendAfterSeconds, devCode: r.devCode)));
+    } catch (e) {
+      if (mounted) toast(context, _authError(e));
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return SwPage(
-      title: widget.changeOnly ? 'Change number' : 'Your number',
+      title: 'Your number',
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('WE\'LL TEXT YOU A 6-DIGIT CODE.', style: T.display(32)),
+          Text("WE'LL TEXT YOU A 6-DIGIT CODE.", style: T.display(32)),
           const SizedBox(height: 18),
           Text('Mobile number', style: T.body(12, color: C.n700)),
           const SizedBox(height: 6),
@@ -245,10 +179,11 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen> {
               Expanded(
                 child: TextField(
                   controller: ctrl,
-                  autofocus: widget.changeOnly,
+                  autofocus: true,
                   keyboardType: TextInputType.phone,
                   autofillHints: const [AutofillHints.telephoneNumberNational],
                   onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) => valid && !sending ? _send() : null,
                   style: T.body(15),
                   decoration: const InputDecoration(
                     border: InputBorder.none,
@@ -262,15 +197,7 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen> {
           const SizedBox(height: 8),
           Text('Econet, NetOne and Telecel numbers.', style: T.body(11.5, color: C.n700)),
           const Spacer(),
-          Btn('Send code',
-              onTap: valid
-                  ? () {
-                      final d = digits;
-                      final pretty = '+263 ${d.substring(0, 2)} ${d.substring(2, 5)} ${d.substring(5)}';
-                      Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => OtpScreen(phone: pretty, changeOnly: widget.changeOnly)));
-                    }
-                  : null),
+          Btn(sending ? 'Sending…' : 'Send code', onTap: valid && !sending ? _send : null),
         ]),
       ),
     );
@@ -280,9 +207,12 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen> {
 // ───────────────────────────── 11 OTP ─────────────────────────────
 
 class OtpScreen extends StatefulWidget {
-  const OtpScreen({super.key, required this.phone, this.changeOnly = false});
+  const OtpScreen({super.key, required this.phone, this.resendAfter = 60, this.devCode});
   final String phone;
-  final bool changeOnly;
+  final int resendAfter;
+
+  /// Present only against a local API with OTP_DEV_ECHO (stands in for the SMS Retriever auto-read).
+  final String? devCode;
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
@@ -290,18 +220,27 @@ class OtpScreen extends StatefulWidget {
 
 class _OtpScreenState extends State<OtpScreen> {
   String code = '';
-  int resendIn = 42;
+  late int resendIn = widget.resendAfter;
+  String? devCode;
   Timer? _tick;
   Timer? _autoRead;
   bool verifying = false;
+  String? error;
 
   @override
   void initState() {
     super.initState();
+    devCode = widget.devCode;
     _startCountdown();
-    // SMS Retriever API stand-in: fills the code a few seconds after it "arrives".
-    _autoRead = Timer(const Duration(seconds: 5), () {
-      if (mounted && code.isEmpty) _fill('482193');
+    _scheduleAutoRead();
+  }
+
+  void _scheduleAutoRead() {
+    _autoRead?.cancel();
+    final c = devCode;
+    if (c == null) return;
+    _autoRead = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted && code.isEmpty) _fill(c);
     });
   }
 
@@ -309,7 +248,7 @@ class _OtpScreenState extends State<OtpScreen> {
     _tick?.cancel();
     _tick = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
-      setState(() => resendIn = (resendIn - 1).clamp(0, 99));
+      setState(() => resendIn = (resendIn - 1).clamp(0, 999));
       if (resendIn == 0) t.cancel();
     });
   }
@@ -330,6 +269,7 @@ class _OtpScreenState extends State<OtpScreen> {
     _autoRead?.cancel();
     if (verifying) return;
     setState(() {
+      error = null;
       if (k == '⌫') {
         if (code.isNotEmpty) code = code.substring(0, code.length - 1);
       } else if (code.length < 6) {
@@ -342,20 +282,36 @@ class _OtpScreenState extends State<OtpScreen> {
   Future<void> _maybeVerify() async {
     if (code.length != 6) return;
     setState(() => verifying = true);
-    await Future<void>.delayed(const Duration(milliseconds: 600));
-    if (!mounted) return;
-    final app = App.read(context);
-    app.phone = widget.phone;
-    if (widget.changeOnly) {
-      app.touch();
-      toast(context, 'Number verified');
-      Navigator.of(context)
-        ..pop()
-        ..pop();
-      return;
+    try {
+      await App.read(context).verifyOtp(widget.phone, code);
+      if (!mounted) return;
+      continueAfterAuth(context);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        error = _authError(e);
+        code = '';
+      });
+    } finally {
+      if (mounted) setState(() => verifying = false);
     }
-    app.signIn();
-    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const CreatePasskeyScreen()));
+  }
+
+  Future<void> _resend() async {
+    try {
+      final r = await App.read(context).requestOtp(widget.phone);
+      if (!mounted) return;
+      setState(() {
+        resendIn = r.resendAfterSeconds;
+        devCode = r.devCode;
+        error = null;
+      });
+      _startCountdown();
+      _scheduleAutoRead();
+      toast(context, 'New code sent to ${prettyPhone(widget.phone)}');
+    } catch (e) {
+      if (mounted) toast(context, _authError(e));
+    }
   }
 
   @override
@@ -370,7 +326,7 @@ class _OtpScreenState extends State<OtpScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text.rich(TextSpan(style: T.body(13, color: C.n800), children: [
               const TextSpan(text: 'Sent to '),
-              TextSpan(text: widget.phone, style: const TextStyle(fontWeight: FontWeight.w700)),
+              TextSpan(text: prettyPhone(widget.phone), style: const TextStyle(fontWeight: FontWeight.w700)),
             ])),
             const SizedBox(height: 12),
             Semantics(
@@ -383,17 +339,15 @@ class _OtpScreenState extends State<OtpScreen> {
               ]),
             ),
             const SizedBox(height: 12),
-            Row(children: [
-              Text(
-                verifying ? 'Verifying…' : (resendIn > 0 ? 'Resend code in $mm:$ss · ' : ''),
-                style: T.body(11.5, color: C.n700),
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(error!, style: T.body(12, color: const Color(0xFF9B2C2C))),
               ),
-              if (!verifying && resendIn == 0)
-                _TextLink('Resend code', () {
-                  setState(() => resendIn = 42);
-                  _startCountdown();
-                  toast(context, 'New code sent to ${widget.phone}');
-                }),
+            Row(children: [
+              Text(verifying ? 'Verifying…' : (resendIn > 0 ? 'Resend code in $mm:$ss · ' : ''),
+                  style: T.body(11.5, color: C.n700)),
+              if (!verifying && resendIn == 0) _TextLink('Resend code', _resend),
               if (!verifying && resendIn == 0) Text(' · ', style: T.body(11.5, color: C.n700)),
               if (!verifying) _TextLink('Change number', () => Navigator.of(context).pop()),
             ]),
@@ -464,9 +418,7 @@ class _Keypad extends StatelessWidget {
                         child: SizedBox(
                           height: 56,
                           child: Center(
-                            child: k == '⌫'
-                                ? const Icon(I.delete, size: 20, semanticLabel: 'Delete')
-                                : Text(k, style: T.body(20)),
+                            child: k == '⌫' ? const Icon(I.delete, size: 20, semanticLabel: 'Delete') : Text(k, style: T.body(20)),
                           ),
                         ),
                       ),
@@ -486,8 +438,9 @@ class CreatePasskeyScreen extends StatefulWidget {
 }
 
 class _CreatePasskeyScreenState extends State<CreatePasskeyScreen> {
-  late final name = TextEditingController(text: App.read(context).displayName);
-  bool agreed = false;
+  late final name = TextEditingController(text: App.read(context).user?.displayName ?? '');
+  late bool agreed = App.read(context).agreedToRules;
+  bool busy = false;
 
   @override
   void dispose() {
@@ -495,10 +448,51 @@ class _CreatePasskeyScreenState extends State<CreatePasskeyScreen> {
     super.dispose();
   }
 
-  void _commit() {
+  Future<bool> _saveProfile() async {
+    final n = name.text.trim();
+    if (n.isEmpty) {
+      toast(context, 'Add a display name — it shows on your reports.');
+      return false;
+    }
+    try {
+      await App.read(context).completeProfile(displayName: n, agreed: agreed);
+      return true;
+    } catch (e) {
+      if (mounted) toast(context, _authError(e));
+      return false;
+    }
+  }
+
+  void _done() {
     final app = App.read(context);
-    app.displayName = name.text.trim().isEmpty ? 'Driver' : name.text.trim();
-    app.agreedToRules = true;
+    final next = app.onboarded ? const Shell() : const OnboardingScreen();
+    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => next), (_) => false);
+  }
+
+  Future<void> _create() async {
+    setState(() => busy = true);
+    try {
+      if (!await _saveProfile()) return;
+      if (!mounted) return;
+      try {
+        await App.read(context).createPasskey();
+        if (mounted) toast(context, 'Passkey saved. Next time, just use your fingerprint.');
+      } catch (e) {
+        if (mounted && !isPasskeyCancel(e)) toast(context, 'Couldn\'t create a passkey here. You can add one later in Account.');
+      }
+      if (mounted) _done();
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _skip() async {
+    setState(() => busy = true);
+    try {
+      if (await _saveProfile() && mounted) _done();
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
   }
 
   @override
@@ -522,9 +516,15 @@ class _CreatePasskeyScreenState extends State<CreatePasskeyScreen> {
               controller: name,
               textCapitalization: TextCapitalization.words,
               autofillHints: const [AutofillHints.nickname],
+              maxLength: 60,
+              onChanged: (_) => setState(() {}),
               style: T.body(14),
               decoration: const InputDecoration(
-                  border: InputBorder.none, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12), isDense: true),
+                  counterText: '',
+                  hintText: 'e.g. Tendai M.',
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  isDense: true),
             ),
           ),
           const Spacer(),
@@ -554,22 +554,9 @@ class _CreatePasskeyScreenState extends State<CreatePasskeyScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          Btn('Create passkey',
-              icon: I.fingerprintPattern,
-              onTap: agreed
-                  ? () {
-                      _commit();
-                      showPasskeySheet(context, create: true);
-                    }
-                  : null),
+          Btn(busy ? 'Saving…' : 'Create passkey', icon: I.fingerprintPattern, onTap: agreed && !busy ? _create : null),
           const SizedBox(height: 6),
-          Btn.ghost('Skip — keep using SMS codes',
-              onTap: agreed
-                  ? () {
-                      _commit();
-                      continueAfterAuth(context);
-                    }
-                  : null),
+          Btn.ghost('Skip — keep using SMS codes', onTap: agreed && !busy ? _skip : null),
         ]),
       ),
     );

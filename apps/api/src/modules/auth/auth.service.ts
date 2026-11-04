@@ -59,7 +59,10 @@ export class AuthService {
       }),
     );
     await this.sms.send(phone, `Your StreetWise code is ${code}. It expires in 5 minutes.`);
-    return { expiresInSeconds: OTP_TTL_SECONDS, resendAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS };
+    const response: OtpRequestResponse = { expiresInSeconds: OTP_TTL_SECONDS, resendAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS };
+    // OTP_DEV_ECHO (refused in production) lets local apps and tests finish sign-in without reading logs.
+    if (this.config.otpDevEcho) response.devCode = code;
+    return response;
   }
 
   async verifyOtp(phone: string, code: string, deviceLabel?: string, now = new Date()): Promise<OtpVerifyResponse> {
@@ -93,12 +96,19 @@ export class AuthService {
       throw new ForbiddenException({ code: 'PHONE_SIGN_IN_DISABLED', message: 'Sign in with your passkey.' });
     }
 
-    const session = await this.sessions.save(this.sessions.create({ userId: user.id, deviceLabel: deviceLabel ?? null, lastSeenAt: now }));
+    return this.issueSession(user, { deviceLabel, isNewUser, now });
+  }
+
+  /** Creates a Session (a signed-in device) and its access token. Shared by OTP and passkey sign-in. */
+  async issueSession(user: User, options: { deviceLabel?: string; isNewUser: boolean; now?: Date }): Promise<OtpVerifyResponse> {
+    const session = await this.sessions.save(
+      this.sessions.create({ userId: user.id, deviceLabel: options.deviceLabel ?? null, lastSeenAt: options.now ?? new Date() }),
+    );
     return {
       accessToken: signAccessToken({ userId: user.id, sessionId: session.id }, this.config.apiJwtSecret),
       tokenType: 'Bearer',
       expiresInSeconds: ACCESS_TOKEN_TTL_SECONDS,
-      isNewUser,
+      isNewUser: options.isNewUser,
       user: toUserResponse(user),
     };
   }

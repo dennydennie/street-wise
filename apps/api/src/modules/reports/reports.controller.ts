@@ -3,8 +3,12 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/auth-token';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Public } from '../auth/public.decorator';
-import { CreateBlockDto, CreateReportDto, FlagDto, ListReportsQuery, UpdateReportDto, VoteDto } from './dto/reports.dto';
+import { SlidingWindowRateLimiter } from '../../common/rate-limiter';
+import { AnalyzeReportDto, CreateBlockDto, CreateReportDto, FlagDto, ListReportsQuery, UpdateReportDto, VoteDto } from './dto/reports.dto';
 import { ReportsService } from './reports.service';
+
+/** Analysis may call an LLM: 20 per user per minute. */
+const analyzeLimiter = new SlidingWindowRateLimiter(20, 60_000);
 
 @ApiTags('reports')
 @ApiBearerAuth()
@@ -22,6 +26,14 @@ export class ReportsController {
   @Post()
   create(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateReportDto) {
     return this.reports.create(user.userId, body);
+  }
+
+  /** Preview: what the server makes of a spoken report (type, redacted summary, severity, tags). Nothing is saved. */
+  @Post('analyze')
+  @HttpCode(200)
+  analyze(@CurrentUser() user: AuthenticatedUser, @Body() body: AnalyzeReportDto) {
+    analyzeLimiter.consume(user.userId);
+    return this.reports.analyze(body.transcript);
   }
 
   @Patch(':id')
