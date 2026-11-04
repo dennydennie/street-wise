@@ -132,6 +132,17 @@ class StreetWiseApi {
     return '${r['text'] ?? ''}';
   }
 
+  // ── Support (e-mailed to the support inbox via SendGrid) ──
+  Future<void> supportMessage({required String category, required String message, String? replyEmail, double? lat, double? lng}) =>
+      client.post('/support/messages', {
+        'category': category,
+        'message': message,
+        'replyEmail': ?replyEmail,
+        'lat': ?lat,
+        'lng': ?lng,
+        'appVersion': 'mobile 1.0.0',
+      });
+
   // ── Passes & payments ──
   Future<MyPass> myPass() async => MyPass.fromJson(_m(await client.get('/me/pass')));
   Future<List<Payment>> myPayments() async => _l(await client.get('/me/payments')).map(Payment.fromJson).toList();

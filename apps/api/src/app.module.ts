@@ -6,10 +6,12 @@ import { AreasModule } from './modules/areas/areas.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CamerasModule } from './modules/cameras/cameras.module';
 import { GeoModule } from './modules/geo/geo.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PassesModule } from './modules/passes/passes.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { PublicConfigModule } from './modules/public-config/public-config.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { SupportModule } from './modules/support/support.module';
 import { TranscriptionsModule } from './modules/transcriptions/transcriptions.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -18,6 +20,7 @@ import { UsersModule } from './modules/users/users.module';
     AppConfigModule.forRoot(),
     DatabaseModule,
     GeoModule,
+    NotificationsModule,
     PublicConfigModule,
     AuthModule,
     UsersModule,
@@ -27,6 +30,7 @@ import { UsersModule } from './modules/users/users.module';
     TranscriptionsModule,
     PassesModule,
     PaymentsModule,
+    SupportModule,
   ],
   controllers: [AppController],
 })

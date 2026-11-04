@@ -16,7 +16,7 @@ import { ACCESS_TOKEN_TTL_SECONDS, signAccessToken } from './auth-token';
 import { OtpChallenge } from './entities/otp-challenge.entity';
 import { Session } from './entities/session.entity';
 import { checkOtpCode, generateOtpCode, hashOtpCode, otpRetryAfterSeconds } from './otp/otp-code';
-import { SMS_SENDER, SmsSender } from './sms/sms-sender';
+import { SMS_SENDER, SmsSender } from '../notifications/sms-sender';
 
 @Injectable()
 export class AuthService {

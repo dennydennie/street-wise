@@ -66,3 +66,38 @@ describe('parseEnv dev conveniences and new providers', () => {
     expect(() => parseEnv({ ...base, MAPBOX_PUBLIC_TOKEN: 'sk.secret' })).toThrow(/pk\./);
   });
 });
+
+describe('parseEnv SMS (Gikko) and e-mail (SendGrid)', () => {
+  it('defaults to console senders locally with the support inbox set', () => {
+    const env = parseEnv(base);
+    expect(env.smsProvider).toBe('console');
+    expect(env.emailProvider).toBe('console');
+    expect(env.supportEmail).toBe('support@streetwise.co.zw');
+    expect(env.gikko.baseUrl).toBe('https://api.infobip.com');
+    expect(env.gikko.authScheme).toBe('App');
+  });
+
+  it('needs the Gikko key and SendGrid key + verified sender when selected', () => {
+    expect(() => parseEnv({ ...base, SMS_PROVIDER: 'gikko' })).toThrow(/GIKKO_API_KEY/);
+    expect(() => parseEnv({ ...base, EMAIL_PROVIDER: 'sendgrid' })).toThrow(/SENDGRID_API_KEY[\s\S]*EMAIL_SENDER_EMAIL/);
+    const env = parseEnv({
+      ...base,
+      SMS_PROVIDER: 'gikko',
+      GIKKO_API_KEY: 'k',
+      GIKKO_SENDER_NAME: 'StreetWise',
+      EMAIL_PROVIDER: 'sendgrid',
+      SENDGRID_API_KEY: 'SG.k',
+      EMAIL_SENDER_EMAIL: 'no-reply@streetwise.co.zw',
+    });
+    expect(env.gikko.apiKey).toBe('k');
+    expect(env.emailSender).toEqual({ email: 'no-reply@streetwise.co.zw', name: 'StreetWise ZW' });
+  });
+
+  it('rejects sender IDs longer than 11 characters', () => {
+    expect(() => parseEnv({ ...base, GIKKO_SENDER_NAME: 'StreetWiseZimbabwe' })).toThrow(/at most 11/);
+  });
+
+  it('refuses console e-mail in production', () => {
+    expect(() => parseEnv({ ...base, NODE_ENV: 'production', API_JWT_SECRET: 'x'.repeat(40) })).toThrow(/EMAIL_PROVIDER=console/);
+  });
+});

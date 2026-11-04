@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import type { DataSource, Repository } from 'typeorm';
 import type { AppConfigService } from '../../config/app-config.service';
+import type { NotificationsService } from '../notifications/notifications.service';
 import type { PassesService } from '../passes/passes.service';
 import { Payment } from './entities/payment.entity';
 import { PaymentsService } from './payments.service';
@@ -22,6 +23,7 @@ const setup = () => {
     paidAt: null,
     failureReason: null,
     paynowReference: null,
+    payerPhone: '+263771234821',
     redirectUrl: null,
     instructions: null,
     createdAt: new Date('2026-11-04T08:00:00Z'),
@@ -33,7 +35,8 @@ const setup = () => {
   };
   const manager = { getRepository: jest.fn(() => paymentRepo) };
   const dataSource = { transaction: jest.fn(async (work: (m: unknown) => unknown) => work(manager)) };
-  const passes = { grantForPayment: jest.fn(async () => ({})) };
+  const passes = { grantForPayment: jest.fn(async () => ({ endsAt: new Date('2026-11-11T16:51:00Z') })) };
+  const notifications = { paymentReceipt: jest.fn(async () => undefined) };
   const config = { paynowMode: 'fake' } as AppConfigService;
 
   const service = new PaymentsService(
@@ -42,8 +45,9 @@ const setup = () => {
     passes as unknown as PassesService,
     paymentRepo as unknown as Repository<Payment>,
     new FakePaynowGateway('http://localhost:4100'),
+    notifications as unknown as NotificationsService,
   );
-  return { service, payment, passes };
+  return { service, payment, passes, notifications };
 };
 
 describe('PaymentsService Paynow result', () => {
@@ -76,12 +80,25 @@ describe('PaymentsService Paynow result', () => {
     expect(passes.grantForPayment).not.toHaveBeenCalled();
   });
 
-  it('does not grant twice when Paynow repeats the callback', async () => {
-    const { service, passes } = setup();
+  it('does not grant (or text a receipt) twice when Paynow repeats the callback', async () => {
+    const { service, passes, notifications } = setup();
     const body = FakePaynowGateway.buildResult('SWZ-7Q4K2M', 150, 'Paid');
     await service.handlePaynowResult(body);
     await service.handlePaynowResult(body);
     expect(passes.grantForPayment).toHaveBeenCalledTimes(1);
+    expect(notifications.paymentReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  it('texts a receipt to the payer once the pass is granted', async () => {
+    const { service, notifications } = setup();
+    await service.handlePaynowResult(FakePaynowGateway.buildResult('SWZ-7Q4K2M', 150, 'Paid'));
+    expect(notifications.paymentReceipt).toHaveBeenCalledWith('+263771234821', {
+      phone: '+263771234821',
+      passLabel: 'Week pass',
+      amountCents: 150,
+      reference: 'SWZ-7Q4K2M',
+      endsAt: new Date('2026-11-11T16:51:00Z'),
+    });
   });
 
   it('client polling never activates a pass', async () => {

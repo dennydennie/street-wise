@@ -11,6 +11,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, MoreThan, Repository } from 'typeorm';
 import { findPass, type Payment as PaymentResponse } from '@streetwise/shared';
 import { AppConfigService } from '../../config/app-config.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { User } from '../users/entities/user.entity';
 import { PassesService } from '../passes/passes.service';
 import { CreatePaymentDto } from './dto/payments.dto';
 import { Payment } from './entities/payment.entity';
@@ -31,6 +33,7 @@ export class PaymentsService implements OnModuleDestroy {
     private readonly passes: PassesService,
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     @Inject(PAYNOW_GATEWAY) private readonly gateway: PaynowGateway,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async create(userId: string, body: CreatePaymentDto): Promise<PaymentResponse> {
@@ -108,7 +111,8 @@ export class PaymentsService implements OnModuleDestroy {
       throw new BadRequestException('Invalid Paynow message');
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    let receipt: { phone: string; passLabel: string; amountCents: number; reference: string; endsAt: Date | null } | null = null;
+    const outcome = await this.dataSource.transaction(async (manager) => {
       const repo = manager.getRepository(Payment);
       const payment = await repo.findOne({ where: { reference: result.reference }, lock: { mode: 'pessimistic_write' } });
       if (!payment) throw new NotFoundException('Unknown payment reference');
@@ -125,8 +129,15 @@ export class PaymentsService implements OnModuleDestroy {
         payment.paidAt = now;
         payment.failureReason = null;
         await repo.save(payment);
+        let endsAt: Date | null = null;
+        let phone = payment.payerPhone;
         if (payment.userId) {
-          await this.passes.grantForPayment(manager, { userId: payment.userId, passId: payment.passId, paymentId: payment.id }, now);
+          const pass = await this.passes.grantForPayment(manager, { userId: payment.userId, passId: payment.passId, paymentId: payment.id }, now);
+          endsAt = pass.endsAt;
+          phone ??= (await manager.getRepository(User).findOne({ where: { id: payment.userId } }))?.phone ?? null;
+        }
+        if (phone) {
+          receipt = { phone, passLabel: findPass(payment.passId)?.label ?? 'Plus pass', amountCents: payment.amountCents, reference: payment.reference, endsAt };
         }
       } else {
         payment.status = result.status === 'pending' ? 'pending' : result.status;
@@ -137,6 +148,9 @@ export class PaymentsService implements OnModuleDestroy {
       }
       return { status: payment.status };
     });
+    // Only after the pass is committed; a failed SMS never undoes a payment.
+    if (receipt) await this.notifications.paymentReceipt((receipt as { phone: string }).phone, receipt);
+    return outcome;
   }
 
   /** PAYNOW_MODE=fake only: simulates Paynow calling our result URL. */

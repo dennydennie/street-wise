@@ -11,7 +11,17 @@ export type ApiEnv = {
   apiJwtSecret: string;
   /** Mixed into every OTP hash so a leaked table cannot be brute-forced offline. */
   otpPepper: string;
-  smsProvider: 'console';
+  /** console logs messages (dev/staging); gikko sends real SMS (same provider as BluWorx). */
+  smsProvider: 'console' | 'gikko';
+  gikko: { apiKey?: string; baseUrl: string; sender: string; authScheme: string; timeoutMs: number; notifyUrl?: string };
+  /** console logs e-mails (dev/staging); sendgrid sends them (same provider as BluWorx). */
+  emailProvider: 'console' | 'sendgrid';
+  sendgrid: { apiKey?: string; apiBaseUrl: string };
+  emailSender: { email?: string; name: string };
+  /** Inbox for Help › Report a bug / wrong camera. */
+  supportEmail: string;
+  /** Optional inbox alerted when a report is flagged into review. */
+  moderationEmail?: string;
   databaseUrl: string;
   databaseSsl: boolean;
   databaseLogQueries: boolean;
@@ -70,7 +80,20 @@ const rawSchema = z.object({
   SWAGGER_UI_ENABLED: booleanFlag,
   API_JWT_SECRET: z.string().min(32, 'API_JWT_SECRET must be at least 32 characters'),
   OTP_PEPPER: z.string().min(16, 'OTP_PEPPER must be at least 16 characters'),
-  SMS_PROVIDER: z.enum(['console']).default('console'),
+  SMS_PROVIDER: z.enum(['console', 'gikko']).default('console'),
+  GIKKO_API_KEY: z.string().min(1).optional(),
+  GIKKO_BASE_URL: z.string().url().default('https://api.infobip.com'),
+  GIKKO_SENDER_NAME: z.string().min(1).max(11, 'GIKKO_SENDER_NAME: alphanumeric sender IDs are at most 11 characters').default('StreetWise'),
+  GIKKO_SMS_AUTH_SCHEME: z.string().min(1).default('App'),
+  GIKKO_SMS_TIMEOUT_MS: z.coerce.number().int().positive().max(60_000).default(10_000),
+  GIKKO_DELIVERY_REPORT_URL: z.string().url().optional(),
+  EMAIL_PROVIDER: z.enum(['console', 'sendgrid']).default('console'),
+  SENDGRID_API_KEY: z.string().min(1).optional(),
+  SENDGRID_API_BASE_URL: z.string().url().default('https://api.sendgrid.com'),
+  EMAIL_SENDER_EMAIL: z.string().email().optional(),
+  EMAIL_SENDER_NAME: z.string().min(1).optional(),
+  SUPPORT_EMAIL: z.string().email().default('support@streetwise.co.zw'),
+  MODERATION_EMAIL: z.string().email().optional(),
   DATABASE_URL: z.string().url(),
   DATABASE_SSL: booleanFlag,
   DATABASE_LOG_QUERIES: booleanFlag,
@@ -118,6 +141,11 @@ export const parseEnv = (input: Record<string, unknown>): ApiEnv => {
   if (raw.PAYNOW_MODE !== 'fake' && (!raw.PAYNOW_INTEGRATION_ID || !raw.PAYNOW_INTEGRATION_KEY)) {
     issues.push(`PAYNOW_MODE=${raw.PAYNOW_MODE} needs PAYNOW_INTEGRATION_ID and PAYNOW_INTEGRATION_KEY`);
   }
+  if (raw.SMS_PROVIDER === 'gikko' && !raw.GIKKO_API_KEY) issues.push('SMS_PROVIDER=gikko needs GIKKO_API_KEY');
+  if (raw.EMAIL_PROVIDER === 'sendgrid') {
+    if (!raw.SENDGRID_API_KEY) issues.push('EMAIL_PROVIDER=sendgrid needs SENDGRID_API_KEY');
+    if (!raw.EMAIL_SENDER_EMAIL) issues.push('EMAIL_PROVIDER=sendgrid needs EMAIL_SENDER_EMAIL (a SendGrid-verified sender)');
+  }
   if (raw.PAYNOW_MODE === 'sandbox' && !raw.PAYNOW_AUTH_EMAIL) {
     issues.push('PAYNOW_MODE=sandbox needs PAYNOW_AUTH_EMAIL (Paynow test mode only accepts the merchant e-mail)');
   }
@@ -147,6 +175,7 @@ export const parseEnv = (input: Record<string, unknown>): ApiEnv => {
   if (raw.NODE_ENV === 'production') {
     if (raw.PAYNOW_MODE !== 'live') issues.push('production requires PAYNOW_MODE=live');
     if (raw.SMS_PROVIDER === 'console') issues.push('production cannot use SMS_PROVIDER=console (it logs sign-in codes)');
+    if (raw.EMAIL_PROVIDER === 'console') issues.push('production cannot use EMAIL_PROVIDER=console (support and moderation mail would only be logged)');
     if (raw.OTP_DEV_ECHO) issues.push('production cannot use OTP_DEV_ECHO (it returns sign-in codes over the API)');
     if (fakeAutoSettle > 0) issues.push('production cannot use FAKE_PAYNOW_AUTO_SETTLE_SECONDS');
     if (raw.WEBAUTHN_RP_ID === 'localhost') issues.push('production needs a real WEBAUTHN_RP_ID (e.g. streetwise.co.zw)');
@@ -185,6 +214,19 @@ export const parseEnv = (input: Record<string, unknown>): ApiEnv => {
     apiJwtSecret: raw.API_JWT_SECRET,
     otpPepper: raw.OTP_PEPPER,
     smsProvider: raw.SMS_PROVIDER,
+    gikko: {
+      apiKey: raw.GIKKO_API_KEY,
+      baseUrl: raw.GIKKO_BASE_URL,
+      sender: raw.GIKKO_SENDER_NAME,
+      authScheme: raw.GIKKO_SMS_AUTH_SCHEME,
+      timeoutMs: raw.GIKKO_SMS_TIMEOUT_MS,
+      notifyUrl: raw.GIKKO_DELIVERY_REPORT_URL,
+    },
+    emailProvider: raw.EMAIL_PROVIDER,
+    sendgrid: { apiKey: raw.SENDGRID_API_KEY, apiBaseUrl: raw.SENDGRID_API_BASE_URL },
+    emailSender: { email: raw.EMAIL_SENDER_EMAIL, name: raw.EMAIL_SENDER_NAME ?? raw.APP_NAME },
+    supportEmail: raw.SUPPORT_EMAIL,
+    moderationEmail: raw.MODERATION_EMAIL,
     databaseUrl: raw.DATABASE_URL,
     databaseSsl: raw.DATABASE_SSL ?? false,
     databaseLogQueries: raw.DATABASE_LOG_QUERIES ?? false,

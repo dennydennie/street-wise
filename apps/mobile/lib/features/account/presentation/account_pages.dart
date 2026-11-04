@@ -443,25 +443,128 @@ class HelpScreen extends StatelessWidget {
   }
 
   Future<void> _bug(BuildContext context) async {
-    final ctrl = TextEditingController();
-    final sent = await showDialog<bool>(
+    final sent = await showModalBottomSheet<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: const RoundedRectangleBorder(),
-        backgroundColor: C.bg,
-        title: Text('REPORT A PROBLEM', style: T.heading(22)),
-        content: TextField(
-          controller: ctrl,
-          maxLines: 4,
-          decoration: const InputDecoration(hintText: 'What went wrong? e.g. camera at Samora × 4th is gone'),
+      isScrollControlled: true,
+      backgroundColor: C.bg,
+      shape: const RoundedRectangleBorder(),
+      builder: (_) => const _SupportSheet(),
+    );
+    if (sent == true && context.mounted) toast(context, 'Sent to support · thanks for helping keep the map right');
+  }
+}
+
+/// Help › Report a bug or wrong camera → POST /support/messages (e-mailed to support).
+class _SupportSheet extends StatefulWidget {
+  const _SupportSheet();
+  @override
+  State<_SupportSheet> createState() => _SupportSheetState();
+}
+
+class _SupportSheetState extends State<_SupportSheet> {
+  static const categories = [('wrong_camera', 'Wrong or missing camera'), ('bug', 'Something isn\'t working'), ('billing', 'Payments & passes'), ('other', 'Something else')];
+  int category = 0;
+  final message = TextEditingController();
+  final email = TextEditingController();
+  bool includeLocation = true;
+  bool sending = false;
+
+  @override
+  void dispose() {
+    message.dispose();
+    email.dispose();
+    super.dispose();
+  }
+
+  bool get valid =>
+      message.text.trim().length >= 5 && (email.text.trim().isEmpty || RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email.text.trim()));
+
+  Future<void> _send() async {
+    final app = App.read(context);
+    setState(() => sending = true);
+    try {
+      final here = app.here;
+      await app.api.supportMessage(
+        category: categories[category].$1,
+        message: message.text.trim(),
+        replyEmail: email.text.trim().isEmpty ? null : email.text.trim(),
+        lat: includeLocation && here.real ? here.lat : null,
+        lng: includeLocation && here.real ? here.lng : null,
+      );
+      if (mounted) Navigator.of(context).pop(true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.friendly);
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final here = App.of(context).here;
+    InputDecoration deco(String hint) => InputDecoration(
+          hintText: hint,
+          hintStyle: T.body(13, color: C.n600),
+          filled: true,
+          fillColor: C.surface,
+          border: const OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: C.divider)),
+          enabledBorder: const OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: C.divider)),
+          focusedBorder: const OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: C.a700)),
+        );
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Center(child: Container(width: 32, height: 3, color: C.n400)),
+            const SizedBox(height: 16),
+            Text('REPORT A PROBLEM', style: T.heading(24)),
+            const SizedBox(height: 8),
+            for (var i = 0; i < categories.length; i++)
+              InkWell(
+                onTap: () => setState(() => category = i),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  child: Row(children: [Dot(selected: category == i), const SizedBox(width: 12), Text(categories[i].$2, style: T.body(13.5))]),
+                ),
+              ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: message,
+              maxLines: 4,
+              maxLength: 2000,
+              onChanged: (_) => setState(() {}),
+              style: T.body(14),
+              decoration: deco(category == 0 ? 'e.g. The camera at Samora × 4th is gone' : 'What happened?'),
+            ),
+            TextField(
+              controller: email,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.email],
+              onChanged: (_) => setState(() {}),
+              style: T.body(14),
+              decoration: deco('Your e-mail, if you want a reply (optional)'),
+            ),
+            if (here.real)
+              InkWell(
+                onTap: () => setState(() => includeLocation = !includeLocation),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Row(children: [
+                    SqCheck(value: includeLocation),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text('Include my current location', style: T.body(13.5))),
+                  ]),
+                ),
+              )
+            else
+              const SizedBox(height: 12),
+            Btn(sending ? 'Sending…' : 'Send to support', icon: I.mail, onTap: valid && !sending ? _send : null),
+          ]),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Send')),
-        ],
       ),
     );
-    if (sent == true && context.mounted) toast(context, 'Sent · thanks for helping keep the map right');
   }
 }
 

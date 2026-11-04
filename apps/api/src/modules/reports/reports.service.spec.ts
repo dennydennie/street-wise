@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
 import type { DataSource, Repository } from 'typeorm';
 import type { AreasService } from '../areas/areas.service';
+import type { NotificationsService } from '../notifications/notifications.service';
 import type { User } from '../users/entities/user.entity';
 import { RuleBasedReportAnalyzer } from './analysis/rule-based-report-analyzer';
 import type { Report } from './entities/report.entity';
@@ -24,6 +25,7 @@ const build = (agreedToRulesAt: Date | null) => {
     {} as Repository<UserBlock>,
     new RuleBasedReportAnalyzer(),
     areas as unknown as AreasService,
+    { moderationAlert: jest.fn() } as unknown as NotificationsService,
   );
   return { service, reports, areas };
 };

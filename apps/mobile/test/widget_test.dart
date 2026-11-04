@@ -75,6 +75,8 @@ class FakeApi {
         return _json(rep, 201);
       case ('GET', '/briefings'):
         return _json(briefingJson);
+      case ('POST', '/support/messages'):
+        return _json({'status': 'received'}, 202);
     }
     return _json({'message': 'Not found'}, 404);
   }
@@ -238,6 +240,22 @@ void main() {
       final q = fake.requests.last.url.queryParameters;
       expect(q['lat'], '-17.84');
       expect(q['lng'], '31.03');
+    });
+  });
+
+  group('support', () {
+    test('support messages post category, text, optional reply e-mail and location', () async {
+      final (app, fake) = await makeState();
+      await app.api.supportMessage(category: 'wrong_camera', message: 'Camera at Samora × 4th is gone', replyEmail: 'd@example.com', lat: -17.83, lng: 31.05);
+      final body = jsonDecode(fake.requests.last.body) as Map<String, dynamic>;
+      expect(fake.requests.last.url.path, '/support/messages');
+      expect(body['category'], 'wrong_camera');
+      expect(body['replyEmail'], 'd@example.com');
+      expect(body['lat'], -17.83);
+      await app.api.supportMessage(category: 'bug', message: 'Crashes on start');
+      final anon = jsonDecode(fake.requests.last.body) as Map<String, dynamic>;
+      expect(anon.containsKey('replyEmail'), isFalse);
+      expect(anon.containsKey('lat'), isFalse);
     });
   });
 

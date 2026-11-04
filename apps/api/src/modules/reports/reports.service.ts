@@ -16,6 +16,7 @@ import {
   type ReportAnalysis,
 } from '@streetwise/shared';
 import { AreasService } from '../areas/areas.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { User } from '../users/entities/user.entity';
 import { toPublicSummary } from './analysis/redact';
 import { REPORT_ANALYZER, type ReportAnalyzer } from './analysis/report-analyzer';
@@ -57,6 +58,7 @@ export class ReportsService {
     @InjectRepository(UserBlock) private readonly blocks: Repository<UserBlock>,
     @Inject(REPORT_ANALYZER) private readonly analyzer: ReportAnalyzer,
     private readonly areas: AreasService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** "Heard: … → Pothole" preview before posting. */
@@ -178,7 +180,8 @@ export class ReportsService {
   }
 
   async flag(userId: string, reportId: string, body: FlagDto): Promise<{ status: 'received'; blocked: boolean }> {
-    return this.dataSource.transaction(async (manager) => {
+    let alert: Parameters<NotificationsService['moderationAlert']>[0] | null = null;
+    const result = await this.dataSource.transaction(async (manager) => {
       const report = await this.lockReport(manager, reportId);
       if (report.reporterId === userId) throw new ForbiddenException('You cannot flag your own report');
 
@@ -190,13 +193,16 @@ export class ReportsService {
       if (report.status === 'live' && shouldSendToReview(body.reason, distinctFlags)) {
         await manager.getRepository(Report).update({ id: reportId }, { status: 'review' });
         await log.insert({ reportId, reportType: report.type, action: 'sent_to_review', reason: body.reason });
+        alert = { reportId, type: report.type, summary: report.summary, locationName: report.locationName, reason: body.reason, flags: distinctFlags };
       }
 
       if (body.blockReporter) {
         await manager.getRepository(UserBlock).upsert({ blockerId: userId, blockedId: report.reporterId }, { conflictPaths: ['blockerId', 'blockedId'] });
       }
-      return { status: 'received', blocked: body.blockReporter === true };
+      return { status: 'received' as const, blocked: body.blockReporter === true };
     });
+    if (alert) await this.notifications.moderationAlert(alert);
+    return result;
   }
 
   async myReports(userId: string, now = new Date()): Promise<MyReport[]> {

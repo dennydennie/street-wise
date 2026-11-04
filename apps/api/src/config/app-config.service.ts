@@ -21,6 +21,12 @@ export class AppConfigService {
   get apiJwtSecret() { return this.get('apiJwtSecret'); }
   get otpPepper() { return this.get('otpPepper'); }
   get smsProvider() { return this.get('smsProvider'); }
+  get gikko() { return this.get('gikko'); }
+  get emailProvider() { return this.get('emailProvider'); }
+  get sendgrid() { return this.get('sendgrid'); }
+  get emailSender() { return this.get('emailSender'); }
+  get supportEmail() { return this.get('supportEmail'); }
+  get moderationEmail() { return this.get('moderationEmail'); }
   get databaseUrl() { return this.get('databaseUrl'); }
   get databaseSsl() { return this.get('databaseSsl'); }
   get databaseLogQueries() { return this.get('databaseLogQueries'); }
