@@ -18,6 +18,7 @@
     "migration:deploy": "typeorm migration:run -d dist/data-source.js",
     "seed:cameras": "ts-node --compiler-options '{\"module\":\"CommonJS\",\"moduleResolution\":\"Node\",\"experimentalDecorators\":true,\"emitDecoratorMetadata\":true}' src/database/seeds/seed-cameras.ts",
     "seed:demo": "ts-node --compiler-options '{\"module\":\"CommonJS\",\"moduleResolution\":\"Node\",\"experimentalDecorators\":true,\"emitDecoratorMetadata\":true}' src/database/seeds/seed-demo.ts",
+    "seed:test-user": "ts-node --compiler-options '{\"module\":\"CommonJS\",\"moduleResolution\":\"Node\",\"experimentalDecorators\":true,\"emitDecoratorMetadata\":true}' src/database/seeds/seed-test-user.ts",
     "typecheck": "tsc --noEmit -p tsconfig.build.json && tsc --noEmit -p tsconfig.spec.json",
     "clean": "rm -rf dist"
   },

@@ -80,6 +80,7 @@ through that handler (wallets ending `0000` fail with "Insufficient balance").
 | `TRANSCRIPTION_PROVIDER` | `none` | `none` or `openai`. |
 | `OPENAI_API_KEY`, `OPENAI_TRANSCRIBE_MODEL` | –, `gpt-4o-mini-transcribe` | |
 | `OTP_DEV_ECHO` | `false` | Dev only: OTP request returns `devCode`. Refused in production. |
+| `TEST_ACCOUNT_PHONE` / `TEST_ACCOUNT_CODE` | — | Tester / store-review account: that phone signs in with the fixed 6-digit code and no SMS is sent. Seeded on deploy (`pnpm db:seed:test-user`). |
 | `FAKE_PAYNOW_AUTO_SETTLE_SECONDS` | `0` | Dev only, `PAYNOW_MODE=fake` only. Refused in production. |
 
 ## Deploy (Railway)

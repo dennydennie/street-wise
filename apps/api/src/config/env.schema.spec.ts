@@ -46,6 +46,16 @@ describe('parseEnv dev conveniences and new providers', () => {
     expect(env.anthropicModel).toBe('claude-haiku-5-5');
   });
 
+  it('reads the test account and wants phone and code together', () => {
+    expect(parseEnv({ ...base, TEST_ACCOUNT_PHONE: '+263770000101', TEST_ACCOUNT_CODE: '507318' }).testAccount).toEqual({
+      phone: '+263770000101',
+      code: '507318',
+    });
+    expect(parseEnv(base).testAccount).toBeUndefined();
+    expect(() => parseEnv({ ...base, TEST_ACCOUNT_PHONE: '+263770000101' })).toThrow(/set together/);
+    expect(() => parseEnv({ ...base, TEST_ACCOUNT_PHONE: '+263770000101', TEST_ACCOUNT_CODE: '111111' })).toThrow(/too easy/);
+  });
+
   it('refuses OTP_DEV_ECHO in production', () => {
     expect(() => parseEnv({ ...production, OTP_DEV_ECHO: 'true' })).toThrow(/OTP_DEV_ECHO/);
   });

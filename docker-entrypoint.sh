@@ -9,6 +9,11 @@ node node_modules/typeorm/cli.js migration:run -d dist/data-source.js
 echo "[entrypoint] seeding cameras"
 node dist/database/seeds/seed-cameras.js
 
+if [ -n "$TEST_ACCOUNT_PHONE" ]; then
+  echo "[entrypoint] seeding test user"
+  node dist/database/seeds/seed-test-user.js
+fi
+
 if [ "$SEED_DEMO" = "true" ]; then
   echo "[entrypoint] seeding demo history"
   node dist/database/seeds/seed-demo.js

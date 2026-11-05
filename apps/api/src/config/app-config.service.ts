@@ -38,6 +38,7 @@ export class AppConfigService {
   get paynowReturnUrl() { return this.get('paynowReturnUrl'); }
   get fakePaynowAutoSettleSeconds() { return this.get('fakePaynowAutoSettleSeconds'); }
   get otpDevEcho() { return this.get('otpDevEcho') && !this.isProduction; }
+  get testAccount() { return this.get('testAccount'); }
   get corsOrigins() { return this.get('corsOrigins'); }
   get webauthnRpId() { return this.get('webauthnRpId'); }
   get webauthnRpName() { return this.get('webauthnRpName'); }

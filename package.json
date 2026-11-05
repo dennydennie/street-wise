@@ -19,6 +19,7 @@
     "db:migrate": "pnpm -F @streetwise/api migration:run",
     "db:seed": "pnpm -F @streetwise/api seed:cameras",
     "db:seed:demo": "pnpm -F @streetwise/api seed:demo",
+    "db:seed:test-user": "pnpm -F @streetwise/api seed:test-user",
     "mobile:get": "cd apps/mobile && flutter pub get",
     "mobile:web": "cd apps/mobile && flutter run -d chrome",
     "mobile:android": "cd apps/mobile && flutter run -d android",

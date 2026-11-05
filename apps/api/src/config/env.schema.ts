@@ -38,6 +38,8 @@ export type ApiEnv = {
   fakePaynowAutoSettleSeconds: number;
   /** Non-production only: `POST /auth/otp/request` returns the code as `devCode`. */
   otpDevEcho: boolean;
+  /** A tester / store-review account: this phone signs in with `code`, no SMS is sent. */
+  testAccount?: { phone: string; code: string };
   /** Extra browser origins allowed by CORS (any http://localhost:<port> is added outside production). */
   corsOrigins: string[];
   webauthnRpId: string;
@@ -105,6 +107,8 @@ const rawSchema = z.object({
   PAYNOW_RETURN_URL: z.string().url().default('streetwise://payments/return'),
   FAKE_PAYNOW_AUTO_SETTLE_SECONDS: z.coerce.number().int().min(0).max(600).optional(),
   OTP_DEV_ECHO: booleanFlag,
+  TEST_ACCOUNT_PHONE: z.string().regex(/^\+263\d{9}$/, 'TEST_ACCOUNT_PHONE must be +263 followed by 9 digits').optional(),
+  TEST_ACCOUNT_CODE: z.string().regex(/^\d{6}$/, 'TEST_ACCOUNT_CODE must be 6 digits').optional(),
   CORS_ORIGINS: z.string().optional(),
   WEBAUTHN_RP_ID: z.string().min(1).default('localhost'),
   WEBAUTHN_RP_NAME: z.string().min(1).optional(),
@@ -148,6 +152,12 @@ export const parseEnv = (input: Record<string, unknown>): ApiEnv => {
   }
   if (raw.PAYNOW_MODE === 'sandbox' && !raw.PAYNOW_AUTH_EMAIL) {
     issues.push('PAYNOW_MODE=sandbox needs PAYNOW_AUTH_EMAIL (Paynow test mode only accepts the merchant e-mail)');
+  }
+  if (Boolean(raw.TEST_ACCOUNT_PHONE) !== Boolean(raw.TEST_ACCOUNT_CODE)) {
+    issues.push('TEST_ACCOUNT_PHONE and TEST_ACCOUNT_CODE must be set together');
+  }
+  if (raw.TEST_ACCOUNT_CODE && /^(\d)\1{5}$|^123456$|^654321$/.test(raw.TEST_ACCOUNT_CODE)) {
+    issues.push('TEST_ACCOUNT_CODE is too easy to guess; pick a random 6-digit code');
   }
   const corsOrigins = parseList(raw.CORS_ORIGINS);
   const webauthnOrigins = parseList(raw.WEBAUTHN_ORIGINS ?? (raw.NODE_ENV === 'production' ? '' : 'http://localhost:*'));
@@ -238,6 +248,7 @@ export const parseEnv = (input: Record<string, unknown>): ApiEnv => {
     paynowReturnUrl: raw.PAYNOW_RETURN_URL,
     fakePaynowAutoSettleSeconds: fakeAutoSettle,
     otpDevEcho: raw.OTP_DEV_ECHO ?? false,
+    testAccount: raw.TEST_ACCOUNT_PHONE && raw.TEST_ACCOUNT_CODE ? { phone: raw.TEST_ACCOUNT_PHONE, code: raw.TEST_ACCOUNT_CODE } : undefined,
     corsOrigins,
     webauthnRpId: raw.WEBAUTHN_RP_ID,
     webauthnRpName: raw.WEBAUTHN_RP_NAME ?? raw.APP_NAME,

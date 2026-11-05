@@ -50,7 +50,10 @@ export class AuthService {
       );
     }
 
-    const code = generateOtpCode();
+    // The tester / store-review account gets its fixed code and no SMS.
+    const test = this.config.testAccount;
+    const isTestAccount = test !== undefined && test.phone === phone;
+    const code = test && isTestAccount ? test.code : generateOtpCode();
     await this.challenges.save(
       this.challenges.create({
         phone,
@@ -58,7 +61,7 @@ export class AuthService {
         expiresAt: new Date(now.getTime() + OTP_TTL_SECONDS * 1000),
       }),
     );
-    await this.sms.send(phone, `Your StreetWise code is ${code}. It expires in 5 minutes.`);
+    if (!isTestAccount) await this.sms.send(phone, `Your StreetWise code is ${code}. It expires in 5 minutes.`);
     const response: OtpRequestResponse = { expiresInSeconds: OTP_TTL_SECONDS, resendAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS };
     // OTP_DEV_ECHO (refused in production) lets local apps and tests finish sign-in without reading logs.
     if (this.config.otpDevEcho) response.devCode = code;
